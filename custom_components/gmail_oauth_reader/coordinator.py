@@ -85,15 +85,18 @@ def parse_email_date(raw_date: str) -> str:
         return raw_date
 
 
-def decode_base64url(data_str: str) -> str:
+def decode_base64url_bytes(data_str: str) -> bytes:
     if not data_str:
-        return ""
+        return b""
     padding = 4 - (len(data_str) % 4)
     if padding and padding < 4:
         data_str += "=" * padding
+    return base64.urlsafe_b64decode(data_str.encode("ascii"))
+
+
+def decode_base64url(data_str: str) -> str:
     try:
-        raw_bytes = base64.urlsafe_b64decode(data_str.encode("ascii"))
-        return raw_bytes.decode("utf-8", errors="replace")
+        return decode_base64url_bytes(data_str).decode("utf-8", errors="replace")
     except Exception:
         return ""
 
@@ -430,8 +433,4 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
                 f"Network error downloading attachment: {err}"
             ) from err
 
-        raw_data = data.get("data", "")
-        padding = 4 - (len(raw_data) % 4)
-        if padding and padding < 4:
-            raw_data += "=" * padding
-        return base64.urlsafe_b64decode(raw_data.encode("ascii"))
+        return decode_base64url_bytes(data.get("data", ""))

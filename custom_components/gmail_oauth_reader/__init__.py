@@ -1,5 +1,5 @@
 from datetime import timedelta
-import os
+from pathlib import Path
 
 import voluptuous as vol
 
@@ -130,17 +130,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         active_coordinator = get_coordinator(call.data.get("entry_id"))
         msg_id = call.data["message_id"]
         att_id = call.data["attachment_id"]
-        filename = os.path.basename(call.data["filename"])
-        target_dir = call.data.get("path") or hass.config.path(DEFAULT_DOWNLOAD_DIR)
+        filename = Path(call.data["filename"]).name
+        target_path = Path(
+            call.data.get("path") or hass.config.path(DEFAULT_DOWNLOAD_DIR),
+            filename,
+        )
 
         content = await active_coordinator.async_download_attachment(msg_id, att_id)
 
         def write_file() -> str:
-            os.makedirs(target_dir, exist_ok=True)
-            full_path = os.path.join(target_dir, filename)
-            with open(full_path, "wb") as file_handle:
-                file_handle.write(content)
-            return full_path
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_bytes(content)
+            return str(target_path)
 
         resolved_path = await hass.async_add_executor_job(write_file)
         return {

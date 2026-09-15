@@ -9,7 +9,6 @@ SCOPES: Final = ["https://www.googleapis.com/auth/gmail.modify"]
 
 CONF_QUERY: Final = "query"
 DEFAULT_QUERY: Final = "is:unread label:INBOX"
-QUERY_UNREAD_INBOX: Final = DEFAULT_QUERY
 
 CONF_POLL_INTERVAL: Final = "poll_interval"
 CONF_QUEUE_DWELL_TIME: Final = "queue_dwell_time"
