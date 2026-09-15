@@ -22,6 +22,7 @@ from .const import (
     DOMAIN,
     GMAIL_MESSAGES_URL,
     MAX_BODY_PREVIEW_LENGTH,
+    MAX_RECENT_EMAILS,
     MAX_SEEN_CACHE_SIZE,
     QUERY_UNREAD_INBOX,
 )
@@ -102,6 +103,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         self._queue: deque[GmailMessage] = deque()
         self._active_message: GmailMessage | None = None
         self._last_message: GmailMessage | None = None
+        self._recent_emails: deque[GmailMessage] = deque(maxlen=MAX_RECENT_EMAILS)
         self._queue_task: asyncio.Task[None] | None = None
         self._unread_count: int = 0
 
@@ -116,6 +118,10 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
     @property
     def last_message(self) -> GmailMessage | None:
         return self._last_message
+
+    @property
+    def recent_emails(self) -> list[GmailMessage]:
+        return list(self._recent_emails)
 
     def cancel_queue_task(self) -> None:
         if self._queue_task is not None and not self._queue_task.done():
@@ -207,8 +213,11 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         if self._initial_run:
             for message_summary in messages:
                 self._record_seen(message_summary["id"])
-            if messages:
-                self._last_message = await self._fetch_message_details(messages[0]["id"])
+            for message_summary in reversed(messages[:MAX_RECENT_EMAILS]):
+                details = await self._fetch_message_details(message_summary["id"])
+                if details is not None:
+                    self._recent_emails.append(details)
+                    self._last_message = details
             self._initial_run = False
             return self._active_message
 
@@ -239,6 +248,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
             while self._queue:
                 self._active_message = self._queue.popleft()
                 self._last_message = self._active_message
+                self._recent_emails.append(self._active_message)
                 self.hass.bus.async_fire(
                     "gmail_oauth_reader_new_email", asdict(self._active_message)
                 )

@@ -54,4 +54,8 @@ class GmailLatestEmailSensor(
         attributes = asdict(message) if message is not None else {}
         attributes["unread_count"] = self.coordinator.unread_count
         attributes["queue_size"] = self.coordinator.queue_size
+        attributes["messages"] = [
+            asdict(email_item)
+            for email_item in reversed(self.coordinator.recent_emails)
+        ]
         return attributes

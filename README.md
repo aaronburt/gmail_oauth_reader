@@ -113,6 +113,7 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
 | `message_id` | string | Unique Gmail message identifier |
 | `unread_count` | integer | Total unread inbox messages matching filter |
 | `queue_size` | integer | Number of emails waiting in the dispatch queue |
+| `messages` | list[dict] | Rotating array of the last 20 emails (newest first) |
 
 ---
 
