@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from collections import OrderedDict, deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
@@ -7,12 +8,13 @@ import email.utils
 import html
 import logging
 import re
+from typing import Any
 
 import aiohttp
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.config_entry_oauth2_flow import OAuth2Session
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -80,6 +82,55 @@ def parse_email_date(raw_date: str) -> str:
         return email.utils.parsedate_to_datetime(raw_date).isoformat()
     except Exception:
         return raw_date
+
+
+def decode_base64url(data_str: str) -> str:
+    if not data_str:
+        return ""
+    padding = 4 - (len(data_str) % 4)
+    if padding and padding < 4:
+        data_str += "=" * padding
+    try:
+        raw_bytes = base64.urlsafe_b64decode(data_str.encode("ascii"))
+        return raw_bytes.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def extract_mime_bodies_and_attachments(
+    payload: dict[str, Any],
+) -> tuple[str, str, list[dict[str, Any]]]:
+    text_parts: list[str] = []
+    html_parts: list[str] = []
+    attachments: list[dict[str, Any]] = []
+
+    def walk(part: dict[str, Any]) -> None:
+        mime_type = part.get("mimeType", "").lower()
+        filename = part.get("filename", "")
+        body = part.get("body", {})
+        data = body.get("data")
+        attachment_id = body.get("attachmentId")
+
+        if filename or attachment_id:
+            attachments.append(
+                {
+                    "filename": filename,
+                    "mime_type": mime_type,
+                    "size": body.get("size", 0),
+                    "attachment_id": attachment_id or "",
+                }
+            )
+
+        if mime_type == "text/plain" and data:
+            text_parts.append(decode_base64url(data))
+        elif mime_type == "text/html" and data:
+            html_parts.append(decode_base64url(data))
+
+        for subpart in part.get("parts", []):
+            walk(subpart)
+
+    walk(payload)
+    return "\n".join(text_parts), "\n".join(html_parts), attachments
 
 
 class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
@@ -257,3 +308,60 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         finally:
             self._active_message = None
             self.async_set_updated_data(None)
+
+    async def async_get_full_email(self, message_id: str) -> dict[str, Any]:
+        url = f"{GMAIL_MESSAGES_URL}/{message_id}"
+        params = {"format": "full"}
+        try:
+            async with asyncio.timeout(15):
+                resp = await self._session.async_request("GET", url, params=params)
+                if resp.status in (400, 401):
+                    raise ConfigEntryAuthFailed(
+                        f"Authentication failed fetching full email {message_id}: {resp.status}"
+                    )
+                if resp.status != 200:
+                    raise HomeAssistantError(
+                        f"Failed to fetch full email {message_id}: {resp.status}"
+                    )
+                data = await resp.json()
+        except TimeoutError as err:
+            raise HomeAssistantError(
+                f"Timeout fetching full email {message_id}: {err}"
+            ) from err
+        except aiohttp.ClientError as err:
+            raise HomeAssistantError(
+                f"Network error fetching full email {message_id}: {err}"
+            ) from err
+
+        payload = data.get("payload", {})
+        raw_headers = {
+            header.get("name", ""): header.get("value", "")
+            for header in payload.get("headers", [])
+        }
+        headers_lower = {name.lower(): value for name, value in raw_headers.items()}
+
+        display_sender, sender_name, sender_email = parse_sender_components(
+            headers_lower.get("from", "")
+        )
+        subject = decode_mime_header(headers_lower.get("subject", ""))
+        received_time = parse_email_date(headers_lower.get("date", ""))
+        text_body, html_body, attachments = extract_mime_bodies_and_attachments(payload)
+
+        return {
+            "message_id": message_id,
+            "thread_id": data.get("threadId", ""),
+            "sender": display_sender,
+            "sender_name": sender_name,
+            "sender_email": sender_email,
+            "to": headers_lower.get("to", ""),
+            "cc": headers_lower.get("cc", ""),
+            "bcc": headers_lower.get("bcc", ""),
+            "subject": subject,
+            "date": received_time,
+            "labels": data.get("labelIds", []),
+            "snippet": data.get("snippet", ""),
+            "text_body": text_body,
+            "html_body": html_body,
+            "attachments": attachments,
+            "headers": raw_headers,
+        }

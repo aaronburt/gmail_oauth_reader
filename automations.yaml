@@ -42,3 +42,28 @@
         notification_id: "gmail_event_{{ trigger.event.data.message_id }}"
   mode: queued
   max: 20
+
+- id: "gmail_oauth_reader_full_content_example"
+  alias: "Gmail - Fetch Full Content On Demand"
+  description: "Demonstrates fetching full plain-text, HTML body, and metadata via get_email_content action"
+  trigger:
+    - platform: event
+      event_type: gmail_oauth_reader_new_email
+  action:
+    - action: gmail_oauth_reader.get_email_content
+      data:
+        message_id: "{{ trigger.event.data.message_id }}"
+      response_variable: email_content
+    - action: persistent_notification.create
+      data:
+        title: "Full Email from {{ email_content.sender }}"
+        message: >-
+          **Subject:** {{ email_content.subject }}
+          **To:** {{ email_content.to }}
+          **Date:** {{ email_content.date }}
+
+          **Text Body:**
+          {{ email_content.text_body }}
+        notification_id: "gmail_full_{{ email_content.message_id }}"
+  mode: queued
+  max: 20

@@ -1,0 +1,15 @@
+get_email_content:
+  name: Get Email Content
+  description: Fetches full metadata, plain-text body, HTML body, and attachments for a specific Gmail email.
+  fields:
+    message_id:
+      name: Message ID
+      description: The unique Gmail message ID to retrieve. If omitted, retrieves the latest active email.
+      example: "1a0a4f5ac927eef3"
+      selector:
+        text:
+    entry_id:
+      name: Config Entry ID
+      description: Optional configuration entry ID if multiple Gmail accounts are configured.
+      selector:
+        text:
