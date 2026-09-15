@@ -50,7 +50,8 @@ class GmailLatestEmailSensor(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        attributes = asdict(self.coordinator.data) if self.coordinator.data else {}
+        message = self.coordinator.data or self.coordinator.last_message
+        attributes = asdict(message) if message is not None else {}
         attributes["unread_count"] = self.coordinator.unread_count
         attributes["queue_size"] = self.coordinator.queue_size
         return attributes

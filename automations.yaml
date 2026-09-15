@@ -24,3 +24,21 @@
         notification_id: "gmail_{{ trigger.to_state.state }}"
   mode: queued
   max: 20
+
+- id: "gmail_oauth_reader_event_notification"
+  alias: "Gmail - New Incoming Email Event Notification"
+  description: "Direct event-based trigger firing instantly on each incoming email"
+  trigger:
+    - platform: event
+      event_type: gmail_oauth_reader_new_email
+  action:
+    - action: persistent_notification.create
+      data:
+        title: "Email from {{ trigger.event.data.sender }}"
+        message: >-
+          **Subject:** {{ trigger.event.data.subject }}
+
+          {{ trigger.event.data.body_preview }}
+        notification_id: "gmail_event_{{ trigger.event.data.message_id }}"
+  mode: queued
+  max: 20

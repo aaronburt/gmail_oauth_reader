@@ -1,6 +1,6 @@
 import asyncio
 from collections import OrderedDict, deque
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 import email.header
 import email.utils
@@ -101,6 +101,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         self._initial_run: bool = True
         self._queue: deque[GmailMessage] = deque()
         self._active_message: GmailMessage | None = None
+        self._last_message: GmailMessage | None = None
         self._queue_task: asyncio.Task[None] | None = None
         self._unread_count: int = 0
 
@@ -111,6 +112,10 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
     @property
     def queue_size(self) -> int:
         return len(self._queue)
+
+    @property
+    def last_message(self) -> GmailMessage | None:
+        return self._last_message
 
     def cancel_queue_task(self) -> None:
         if self._queue_task is not None and not self._queue_task.done():
@@ -202,6 +207,8 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         if self._initial_run:
             for message_summary in messages:
                 self._record_seen(message_summary["id"])
+            if messages:
+                self._last_message = await self._fetch_message_details(messages[0]["id"])
             self._initial_run = False
             return self._active_message
 
@@ -231,6 +238,10 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         try:
             while self._queue:
                 self._active_message = self._queue.popleft()
+                self._last_message = self._active_message
+                self.hass.bus.async_fire(
+                    "gmail_oauth_reader_new_email", asdict(self._active_message)
+                )
                 self.async_set_updated_data(self._active_message)
                 await asyncio.sleep(dwell_time)
         finally:
