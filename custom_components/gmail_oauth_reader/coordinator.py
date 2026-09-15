@@ -19,14 +19,15 @@ from homeassistant.helpers.config_entry_oauth2_flow import OAuth2Session
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_QUERY,
     CONF_QUEUE_DWELL_TIME,
+    DEFAULT_QUERY,
     DEFAULT_QUEUE_DWELL_TIME,
     DOMAIN,
     GMAIL_MESSAGES_URL,
     MAX_BODY_PREVIEW_LENGTH,
     MAX_RECENT_EMAILS,
     MAX_SEEN_CACHE_SIZE,
-    QUERY_UNREAD_INBOX,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -234,7 +235,8 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         )
 
     async def _async_update_data(self) -> GmailMessage | None:
-        params = {"q": QUERY_UNREAD_INBOX, "maxResults": "20"}
+        query = self._entry.options.get(CONF_QUERY, DEFAULT_QUERY)
+        params = {"q": query, "maxResults": "20"}
         try:
             async with asyncio.timeout(10):
                 resp = await self._session.async_request(
@@ -365,3 +367,71 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
             "attachments": attachments,
             "headers": raw_headers,
         }
+
+    async def async_modify_email(
+        self,
+        message_id: str,
+        add_labels: list[str] | None = None,
+        remove_labels: list[str] | None = None,
+    ) -> dict[str, Any]:
+        url = f"{GMAIL_MESSAGES_URL}/{message_id}/modify"
+        payload = {
+            "addLabelIds": add_labels or [],
+            "removeLabelIds": remove_labels or [],
+        }
+        try:
+            async with asyncio.timeout(10):
+                resp = await self._session.async_request("POST", url, json=payload)
+                if resp.status in (400, 401):
+                    raise ConfigEntryAuthFailed(
+                        f"Authentication failed modifying email {message_id}: {resp.status}"
+                    )
+                if resp.status != 200:
+                    raise HomeAssistantError(
+                        f"Failed modifying email {message_id}: {resp.status}"
+                    )
+                data = await resp.json()
+        except TimeoutError as err:
+            raise HomeAssistantError(
+                f"Timeout modifying email {message_id}: {err}"
+            ) from err
+        except aiohttp.ClientError as err:
+            raise HomeAssistantError(
+                f"Network error modifying email {message_id}: {err}"
+            ) from err
+
+        return {
+            "message_id": message_id,
+            "labels": data.get("labelIds", []),
+        }
+
+    async def async_download_attachment(
+        self, message_id: str, attachment_id: str
+    ) -> bytes:
+        url = f"{GMAIL_MESSAGES_URL}/{message_id}/attachments/{attachment_id}"
+        try:
+            async with asyncio.timeout(15):
+                resp = await self._session.async_request("GET", url)
+                if resp.status in (400, 401):
+                    raise ConfigEntryAuthFailed(
+                        f"Authentication failed downloading attachment: {resp.status}"
+                    )
+                if resp.status != 200:
+                    raise HomeAssistantError(
+                        f"Failed downloading attachment: {resp.status}"
+                    )
+                data = await resp.json()
+        except TimeoutError as err:
+            raise HomeAssistantError(
+                f"Timeout downloading attachment: {err}"
+            ) from err
+        except aiohttp.ClientError as err:
+            raise HomeAssistantError(
+                f"Network error downloading attachment: {err}"
+            ) from err
+
+        raw_data = data.get("data", "")
+        padding = 4 - (len(raw_data) % 4)
+        if padding and padding < 4:
+            raw_data += "=" * padding
+        return base64.urlsafe_b64decode(raw_data.encode("ascii"))

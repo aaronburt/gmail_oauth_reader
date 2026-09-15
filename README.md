@@ -93,35 +93,35 @@ On initial startup or integration reload:
 Access the integration's **Configure** button under **Settings** > **Devices & Services** to adjust:
 - **Polling interval**: 30 to 600 seconds (default: 60 seconds).
 - **Queue dwell time**: 1 to 60 seconds (default: 5 seconds).
+- **Search Query filter**: e.g. `is:unread label:INBOX -category:promotions` (default: `is:unread label:INBOX`).
 
 ---
 
-## 4. Sensor Entity Specification
+## 4. Entities & Actions Specification
 
-- **Entity ID**: `sensor.gmail_latest_email` (or `sensor.<email_prefix>_latest_email`)
-- **State**: The Gmail unique `message_id` while an email is actively displayed; `'idle'` when no active email is present.
+### Entities
+1. **`sensor.gmail_latest_email`**:
+   - **State**: Gmail unique `message_id` while active; `'idle'` when queue is clear.
+   - **Attributes**: `sender`, `sender_name`, `sender_email`, `subject`, `body_preview`, `received_time`, `message_id`, `unread_count`, `queue_size`, `messages` (rotating list of last 20 emails, newest first).
+2. **`sensor.gmail_unread_count`**:
+   - **State**: Integer representing total unread emails matching your search query.
+   - **State Class**: `measurement` (enables history graphs, gauges, and dashboard badges).
 
-### Attributes
-| Attribute | Type | Description |
-| :--- | :--- | :--- |
-| `sender` | string | Clean sender display name with email fallback |
-| `sender_name` | string | Display name of the sender |
-| `sender_email` | string | Extracted sender email address |
-| `subject` | string | RFC 2047 MIME decoded subject line |
-| `body_preview` | string | Plain-text snippet with HTML, URLs, and tracking links stripped |
-| `received_time` | string | ISO 8601 formatted timestamp |
-| `message_id` | string | Unique Gmail message identifier |
-| `unread_count` | integer | Total unread inbox messages matching filter |
-| `queue_size` | integer | Number of emails waiting in the dispatch queue |
-| `messages` | list[dict] | Rotating array of the last 20 emails (newest first) |
+### Actions (Services)
+- **`gmail_oauth_reader.get_email_content`**:
+  Fetches full metadata, plain text body, HTML body, attachments list, and all raw headers (`SupportsResponse.ONLY`).
+- **`gmail_oauth_reader.modify_email`**:
+  Modifies labels on an email (e.g. `mark_as_read: true`, `archive: true`, `add_labels: ["..."]`, `remove_labels: ["..."]`).
+- **`gmail_oauth_reader.download_attachment`**:
+  Downloads an attachment to Home Assistant storage (default: `www/gmail_attachments/<filename>`).
 
 ---
 
-## 5. Home Assistant Automation Example
+## 5. Home Assistant Automation Examples
 
+### Example 1: Notification with State Trigger
 ```yaml
 alias: "Gmail - New Incoming Email Notification"
-description: "Dispatches a persistent notification whenever a new unread email is processed through the queue"
 trigger:
   - platform: state
     entity_id: sensor.gmail_latest_email
@@ -129,11 +129,6 @@ trigger:
       - "idle"
       - "unknown"
       - "unavailable"
-condition:
-  - condition: template
-    value_template: "{{ trigger.to_state.state != trigger.from_state.state }}"
-  - condition: template
-    value_template: "{{ state_attr('sensor.gmail_latest_email', 'sender') is not none }}"
 action:
   - action: persistent_notification.create
     data:
@@ -143,6 +138,24 @@ action:
 
         {{ state_attr('sensor.gmail_latest_email', 'body_preview') }}
       notification_id: "gmail_{{ trigger.to_state.state }}"
-mode: queued
-max: 20
+```
+
+### Example 2: Process Full Email & Mark as Read
+```yaml
+alias: "Gmail - Process and Mark as Read"
+trigger:
+  - platform: event
+    event_type: gmail_oauth_reader_new_email
+action:
+  # 1. Fetch full email text and HTML body
+  - action: gmail_oauth_reader.get_email_content
+    data:
+      message_id: "{{ trigger.event.data.message_id }}"
+    response_variable: email_data
+
+  # 2. Mark email as read
+  - action: gmail_oauth_reader.modify_email
+    data:
+      message_id: "{{ email_data.message_id }}"
+      mark_as_read: true
 ```

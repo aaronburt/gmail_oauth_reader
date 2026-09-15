@@ -26,7 +26,8 @@
         "title": "Gmail Reader Options",
         "data": {
           "poll_interval": "Polling interval (seconds)",
-          "queue_dwell_time": "Queue dwell time per email (seconds)"
+          "queue_dwell_time": "Queue dwell time per email (seconds)",
+          "query": "Gmail search query filter"
         }
       }
     }
@@ -35,6 +36,9 @@
     "sensor": {
       "latest_email": {
         "name": "Latest Email"
+      },
+      "unread_count": {
+        "name": "Unread Count"
       }
     }
   }

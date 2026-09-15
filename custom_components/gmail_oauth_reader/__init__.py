@@ -1,4 +1,5 @@
 from datetime import timedelta
+import os
 
 import voluptuous as vol
 
@@ -15,16 +16,42 @@ from homeassistant.helpers import config_entry_oauth2_flow, config_validation as
 
 from .const import (
     CONF_POLL_INTERVAL,
+    DEFAULT_DOWNLOAD_DIR,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
 )
 from .coordinator import GmailDataUpdateCoordinator
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
+
 SERVICE_GET_EMAIL_CONTENT = "get_email_content"
+SERVICE_MODIFY_EMAIL = "modify_email"
+SERVICE_DOWNLOAD_ATTACHMENT = "download_attachment"
+
 SCHEMA_GET_EMAIL_CONTENT = vol.Schema(
     {
         vol.Optional("message_id"): cv.string,
+        vol.Optional("entry_id"): cv.string,
+    }
+)
+
+SCHEMA_MODIFY_EMAIL = vol.Schema(
+    {
+        vol.Optional("message_id"): cv.string,
+        vol.Optional("mark_as_read", default=False): cv.boolean,
+        vol.Optional("archive", default=False): cv.boolean,
+        vol.Optional("add_labels"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("remove_labels"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("entry_id"): cv.string,
+    }
+)
+
+SCHEMA_DOWNLOAD_ATTACHMENT = vol.Schema(
+    {
+        vol.Required("message_id"): cv.string,
+        vol.Required("attachment_id"): cv.string,
+        vol.Required("filename"): cv.string,
+        vol.Optional("path"): cv.string,
         vol.Optional("entry_id"): cv.string,
     }
 )
@@ -56,27 +83,71 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
-    async def handle_get_email_content(call: ServiceCall) -> ServiceResponse:
-        entry_id = call.data.get("entry_id")
+    def get_coordinator(entry_id: str | None) -> GmailDataUpdateCoordinator:
         if entry_id and entry_id in hass.data[DOMAIN]:
-            active_coordinator = hass.data[DOMAIN][entry_id]
-        elif hass.data.get(DOMAIN):
-            active_coordinator = next(iter(hass.data[DOMAIN].values()))
-        else:
-            raise HomeAssistantError("No Gmail integration configured")
+            return hass.data[DOMAIN][entry_id]
+        if hass.data.get(DOMAIN):
+            return next(iter(hass.data[DOMAIN].values()))
+        raise HomeAssistantError("No Gmail integration configured")
 
-        target_message_id = call.data.get("message_id")
-        if not target_message_id:
-            if active_coordinator.data is not None:
-                target_message_id = active_coordinator.data.message_id
-            elif active_coordinator.last_message is not None:
-                target_message_id = active_coordinator.last_message.message_id
-            else:
-                raise HomeAssistantError(
-                    "No message_id provided and no recent email is available"
-                )
+    def get_message_id(
+        active_coordinator: GmailDataUpdateCoordinator,
+        message_id: str | None,
+    ) -> str:
+        if message_id:
+            return message_id
+        if active_coordinator.data is not None:
+            return active_coordinator.data.message_id
+        if active_coordinator.last_message is not None:
+            return active_coordinator.last_message.message_id
+        raise HomeAssistantError(
+            "No message_id provided and no recent email is available"
+        )
 
+    async def handle_get_email_content(call: ServiceCall) -> ServiceResponse:
+        active_coordinator = get_coordinator(call.data.get("entry_id"))
+        target_message_id = get_message_id(
+            active_coordinator, call.data.get("message_id")
+        )
         return await active_coordinator.async_get_full_email(target_message_id)
+
+    async def handle_modify_email(call: ServiceCall) -> ServiceResponse:
+        active_coordinator = get_coordinator(call.data.get("entry_id"))
+        target_message_id = get_message_id(
+            active_coordinator, call.data.get("message_id")
+        )
+        add_labels = list(call.data.get("add_labels") or [])
+        remove_labels = list(call.data.get("remove_labels") or [])
+        if call.data.get("mark_as_read") and "UNREAD" not in remove_labels:
+            remove_labels.append("UNREAD")
+        if call.data.get("archive") and "INBOX" not in remove_labels:
+            remove_labels.append("INBOX")
+        return await active_coordinator.async_modify_email(
+            target_message_id, add_labels, remove_labels
+        )
+
+    async def handle_download_attachment(call: ServiceCall) -> ServiceResponse:
+        active_coordinator = get_coordinator(call.data.get("entry_id"))
+        msg_id = call.data["message_id"]
+        att_id = call.data["attachment_id"]
+        filename = os.path.basename(call.data["filename"])
+        target_dir = call.data.get("path") or hass.config.path(DEFAULT_DOWNLOAD_DIR)
+
+        content = await active_coordinator.async_download_attachment(msg_id, att_id)
+
+        def write_file() -> str:
+            os.makedirs(target_dir, exist_ok=True)
+            full_path = os.path.join(target_dir, filename)
+            with open(full_path, "wb") as file_handle:
+                file_handle.write(content)
+            return full_path
+
+        resolved_path = await hass.async_add_executor_job(write_file)
+        return {
+            "path": resolved_path,
+            "filename": filename,
+            "size": len(content),
+        }
 
     if not hass.services.has_service(DOMAIN, SERVICE_GET_EMAIL_CONTENT):
         hass.services.async_register(
@@ -84,6 +155,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             SERVICE_GET_EMAIL_CONTENT,
             handle_get_email_content,
             schema=SCHEMA_GET_EMAIL_CONTENT,
+            supports_response=SupportsResponse.ONLY,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_MODIFY_EMAIL):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_MODIFY_EMAIL,
+            handle_modify_email,
+            schema=SCHEMA_MODIFY_EMAIL,
+            supports_response=SupportsResponse.ONLY,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_DOWNLOAD_ATTACHMENT):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_DOWNLOAD_ATTACHMENT,
+            handle_download_attachment,
+            schema=SCHEMA_DOWNLOAD_ATTACHMENT,
             supports_response=SupportsResponse.ONLY,
         )
 
@@ -98,10 +187,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         coordinator: GmailDataUpdateCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
         coordinator.cancel_queue_task()
-        if not hass.data[DOMAIN] and hass.services.has_service(
-            DOMAIN, SERVICE_GET_EMAIL_CONTENT
-        ):
-            hass.services.async_remove(DOMAIN, SERVICE_GET_EMAIL_CONTENT)
+        if not hass.data[DOMAIN]:
+            for service_name in (
+                SERVICE_GET_EMAIL_CONTENT,
+                SERVICE_MODIFY_EMAIL,
+                SERVICE_DOWNLOAD_ATTACHMENT,
+            ):
+                if hass.services.has_service(DOMAIN, service_name):
+                    hass.services.async_remove(DOMAIN, service_name)
     return unload_ok
 
 

@@ -10,8 +10,10 @@ from homeassistant.helpers import config_entry_oauth2_flow
 
 from .const import (
     CONF_POLL_INTERVAL,
+    CONF_QUERY,
     CONF_QUEUE_DWELL_TIME,
     DEFAULT_POLL_INTERVAL,
+    DEFAULT_QUERY,
     DEFAULT_QUEUE_DWELL_TIME,
     DOMAIN,
     GMAIL_PROFILE_URL,
@@ -100,6 +102,10 @@ class GmailOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     vol.Coerce(int),
                     vol.Range(min=MIN_QUEUE_DWELL_TIME, max=MAX_QUEUE_DWELL_TIME),
                 ),
+                vol.Optional(
+                    CONF_QUERY,
+                    default=self.options.get(CONF_QUERY, DEFAULT_QUERY),
+                ): str,
             }
         )
 

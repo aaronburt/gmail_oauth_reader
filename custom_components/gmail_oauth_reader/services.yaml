@@ -13,3 +13,77 @@ get_email_content:
       description: Optional configuration entry ID if multiple Gmail accounts are configured.
       selector:
         text:
+
+modify_email:
+  name: Modify Email
+  description: Modifies labels on a Gmail message (e.g. mark as read, archive, or add/remove labels).
+  fields:
+    message_id:
+      name: Message ID
+      description: The unique Gmail message ID to modify. If omitted, targets the latest active email.
+      example: "1a0a4f5ac927eef3"
+      selector:
+        text:
+    mark_as_read:
+      name: Mark as Read
+      description: Removes the UNREAD label from the email.
+      default: false
+      selector:
+        boolean:
+    archive:
+      name: Archive
+      description: Removes the INBOX label from the email.
+      default: false
+      selector:
+        boolean:
+    add_labels:
+      name: Add Labels
+      description: List of label IDs to add to the email.
+      selector:
+        object:
+    remove_labels:
+      name: Remove Labels
+      description: List of label IDs to remove from the email.
+      selector:
+        object:
+    entry_id:
+      name: Config Entry ID
+      description: Optional configuration entry ID if multiple Gmail accounts are configured.
+      selector:
+        text:
+
+download_attachment:
+  name: Download Attachment
+  description: Downloads an email attachment from Gmail to Home Assistant storage (e.g. www/gmail_attachments/).
+  fields:
+    message_id:
+      name: Message ID
+      description: The unique Gmail message ID containing the attachment.
+      required: true
+      example: "1a0a4f5ac927eef3"
+      selector:
+        text:
+    attachment_id:
+      name: Attachment ID
+      description: The unique attachment ID (returned in the attachments array of get_email_content).
+      required: true
+      selector:
+        text:
+    filename:
+      name: Filename
+      description: The filename to save the attachment as (e.g. invoice.pdf).
+      required: true
+      example: "invoice.pdf"
+      selector:
+        text:
+    path:
+      name: Destination Directory
+      description: Custom directory path to save the attachment. Defaults to www/gmail_attachments/.
+      example: "/config/www/invoices"
+      selector:
+        text:
+    entry_id:
+      name: Config Entry ID
+      description: Optional configuration entry ID if multiple Gmail accounts are configured.
+      selector:
+        text:

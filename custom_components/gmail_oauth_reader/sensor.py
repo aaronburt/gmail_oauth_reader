@@ -1,7 +1,7 @@
 from dataclasses import asdict
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -18,7 +18,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: GmailDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([GmailLatestEmailSensor(coordinator, entry)])
+    async_add_entities(
+        [
+            GmailLatestEmailSensor(coordinator, entry),
+            GmailUnreadCountSensor(coordinator, entry),
+        ]
+    )
 
 
 class GmailLatestEmailSensor(
@@ -59,3 +64,30 @@ class GmailLatestEmailSensor(
             for email_item in reversed(self.coordinator.recent_emails)
         ]
         return attributes
+
+
+class GmailUnreadCountSensor(
+    CoordinatorEntity[GmailDataUpdateCoordinator], SensorEntity
+):
+    _attr_has_entity_name = True
+    _attr_translation_key = "unread_count"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:email-outline"
+
+    def __init__(
+        self,
+        coordinator: GmailDataUpdateCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.unique_id}_unread_count"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.unique_id))},
+            name=f"Gmail ({entry.title})",
+            manufacturer="Google",
+            model="Gmail API",
+        )
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.unread_count

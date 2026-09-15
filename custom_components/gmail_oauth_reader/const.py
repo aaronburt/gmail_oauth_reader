@@ -5,12 +5,15 @@ DOMAIN: Final = "gmail_oauth_reader"
 GMAIL_MESSAGES_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
 GMAIL_PROFILE_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/profile"
 
-SCOPES: Final = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES: Final = ["https://www.googleapis.com/auth/gmail.modify"]
 
-QUERY_UNREAD_INBOX: Final = "is:unread label:INBOX"
+CONF_QUERY: Final = "query"
+DEFAULT_QUERY: Final = "is:unread label:INBOX"
+QUERY_UNREAD_INBOX: Final = DEFAULT_QUERY
 
 CONF_POLL_INTERVAL: Final = "poll_interval"
 CONF_QUEUE_DWELL_TIME: Final = "queue_dwell_time"
+DEFAULT_DOWNLOAD_DIR: Final = "www/gmail_attachments"
 
 DEFAULT_POLL_INTERVAL: Final = 60
 DEFAULT_QUEUE_DWELL_TIME: Final = 5
