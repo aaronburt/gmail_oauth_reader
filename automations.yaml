@@ -1,0 +1,26 @@
+- id: "gmail_oauth_reader_new_email_notification"
+  alias: "Gmail - New Incoming Email Notification"
+  description: "Dispatches a persistent notification whenever a new unread email is processed through the queue"
+  trigger:
+    - platform: state
+      entity_id: sensor.gmail_latest_email
+      not_to:
+        - "idle"
+        - "unknown"
+        - "unavailable"
+  condition:
+    - condition: template
+      value_template: "{{ trigger.to_state.state != trigger.from_state.state }}"
+    - condition: template
+      value_template: "{{ state_attr('sensor.gmail_latest_email', 'sender') is not none }}"
+  action:
+    - action: persistent_notification.create
+      data:
+        title: "Email from {{ state_attr('sensor.gmail_latest_email', 'sender') }}"
+        message: >-
+          **Subject:** {{ state_attr('sensor.gmail_latest_email', 'subject') }}
+
+          {{ state_attr('sensor.gmail_latest_email', 'body_preview') }}
+        notification_id: "gmail_{{ trigger.to_state.state }}"
+  mode: queued
+  max: 20

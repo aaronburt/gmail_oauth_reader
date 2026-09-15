@@ -1,0 +1,11 @@
+{
+  "domain": "gmail_oauth_reader",
+  "name": "Gmail OAuth Reader",
+  "codeowners": ["@user"],
+  "config_flow": true,
+  "documentation": "https://github.com/user/gmail_oauth_reader",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "dependencies": ["http"],
+  "version": "1.0.0"
+}
