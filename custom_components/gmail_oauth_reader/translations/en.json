@@ -16,6 +16,7 @@
       "oauth_timeout": "[%key:common::config_flow::abort::oauth2_timeout%]",
       "oauth_unauthorized": "[%key:common::config_flow::abort::oauth2_unauthorized%]",
       "oauth_failed": "[%key:common::config_flow::abort::oauth2_failed%]",
+      "missing_configuration": "[%key:common::config_flow::abort::oauth2_missing_configuration%]",
       "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]"
     }
   },
