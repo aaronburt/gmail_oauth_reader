@@ -25,6 +25,7 @@ from .const import (
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
     MODE_PUBSUB_PUSH,
+    SERVICE_SEND_EMAIL,
 )
 from .coordinator import GmailDataUpdateCoordinator
 
@@ -58,6 +59,20 @@ SCHEMA_DOWNLOAD_ATTACHMENT = vol.Schema(
         vol.Required("attachment_id"): cv.string,
         vol.Required("filename"): cv.string,
         vol.Optional("path"): cv.string,
+        vol.Optional("entry_id"): cv.string,
+    }
+)
+
+SCHEMA_SEND_EMAIL = vol.Schema(
+    {
+        vol.Required("to"): vol.Any(cv.string, vol.All(cv.ensure_list, [cv.string])),
+        vol.Required("subject"): cv.string,
+        vol.Optional("body"): cv.string,
+        vol.Optional("html_body"): cv.string,
+        vol.Optional("cc"): vol.Any(cv.string, vol.All(cv.ensure_list, [cv.string])),
+        vol.Optional("bcc"): vol.Any(cv.string, vol.All(cv.ensure_list, [cv.string])),
+        vol.Optional("reply_to"): cv.string,
+        vol.Optional("attachments"): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("entry_id"): cv.string,
     }
 )
@@ -192,6 +207,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "size": len(content),
         }
 
+    async def handle_send_email(call: ServiceCall) -> ServiceResponse:
+        active_coordinator = get_coordinator(call.data.get("entry_id"))
+        return await active_coordinator.async_send_email(
+            to=call.data["to"],
+            subject=call.data["subject"],
+            body=call.data.get("body"),
+            html_body=call.data.get("html_body"),
+            cc=call.data.get("cc"),
+            bcc=call.data.get("bcc"),
+            reply_to=call.data.get("reply_to"),
+            attachments=call.data.get("attachments"),
+        )
+
     if not hass.services.has_service(DOMAIN, SERVICE_GET_EMAIL_CONTENT):
         hass.services.async_register(
             DOMAIN,
@@ -219,6 +247,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             supports_response=SupportsResponse.ONLY,
         )
 
+    if not hass.services.has_service(DOMAIN, SERVICE_SEND_EMAIL):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SEND_EMAIL,
+            handle_send_email,
+            schema=SCHEMA_SEND_EMAIL,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -237,6 +274,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_GET_EMAIL_CONTENT,
                 SERVICE_MODIFY_EMAIL,
                 SERVICE_DOWNLOAD_ATTACHMENT,
+                SERVICE_SEND_EMAIL,
             ):
                 if hass.services.has_service(DOMAIN, service_name):
                     hass.services.async_remove(DOMAIN, service_name)

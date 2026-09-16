@@ -4,9 +4,12 @@ from collections import OrderedDict, deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 import email.header
+from email.message import EmailMessage
 import email.utils
 import html
 import logging
+import mimetypes
+from pathlib import Path
 import re
 from typing import Any
 
@@ -19,6 +22,7 @@ from homeassistant.helpers.config_entry_oauth2_flow import OAuth2Session
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_ENABLE_WRITE,
     CONF_EXTRACT_OTP,
     CONF_OTP_EXPIRY_MINUTES,
     CONF_POLL_INTERVAL,
@@ -29,6 +33,7 @@ from .const import (
     CONF_QUEUE_DWELL_TIME,
     CONF_SAFETY_POLL_INTERVAL,
     CONF_UPDATE_MODE,
+    DEFAULT_ENABLE_WRITE,
     DEFAULT_EXTRACT_OTP,
     DEFAULT_OTP_EXPIRY_MINUTES,
     DEFAULT_POLL_INTERVAL,
@@ -38,6 +43,7 @@ from .const import (
     DEFAULT_UPDATE_MODE,
     DOMAIN,
     GMAIL_MESSAGES_URL,
+    GMAIL_SEND_URL,
     MAX_BODY_PREVIEW_LENGTH,
     MAX_RECENT_EMAILS,
     MAX_SEEN_CACHE_SIZE,
@@ -217,6 +223,15 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
     @property
     def update_mode(self) -> str:
         return self._entry.options.get(CONF_UPDATE_MODE, DEFAULT_UPDATE_MODE)
+
+    @property
+    def is_write_enabled(self) -> bool:
+        return bool(
+            self._entry.options.get(
+                CONF_ENABLE_WRITE,
+                self._entry.data.get(CONF_ENABLE_WRITE, DEFAULT_ENABLE_WRITE),
+            )
+        )
 
     @property
     def watch_active(self) -> bool:
@@ -645,3 +660,102 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
             ) from err
 
         return decode_base64url_bytes(data.get("data", ""))
+
+    async def async_send_email(
+        self,
+        to: str | list[str],
+        subject: str,
+        body: str | None = None,
+        html_body: str | None = None,
+        cc: str | list[str] | None = None,
+        bcc: str | list[str] | None = None,
+        reply_to: str | None = None,
+        attachments: list[str] | None = None,
+    ) -> dict[str, Any]:
+        if not self.is_write_enabled:
+            raise HomeAssistantError(
+                "Write access is not enabled for this Gmail account. "
+                "Please re-authenticate to grant write permissions."
+            )
+
+        if not body and not html_body:
+            raise HomeAssistantError(
+                "Either body or html_body must be provided to send an email"
+            )
+
+        msg = EmailMessage()
+        msg["To"] = ", ".join(to) if isinstance(to, list) else to
+        msg["Subject"] = subject
+        if self._entry.title and "@" in self._entry.title:
+            msg["From"] = self._entry.title
+        if cc:
+            msg["Cc"] = ", ".join(cc) if isinstance(cc, list) else cc
+        if bcc:
+            msg["Bcc"] = ", ".join(bcc) if isinstance(bcc, list) else bcc
+        if reply_to:
+            msg["Reply-To"] = reply_to
+
+        if body and html_body:
+            msg.set_content(body)
+            msg.add_alternative(html_body, subtype="html")
+        elif html_body:
+            msg.set_content(html_body, subtype="html")
+        else:
+            msg.set_content(body or "")
+
+        if attachments:
+            for file_path_str in attachments:
+                file_path = Path(file_path_str)
+                if not file_path.is_file():
+                    raise HomeAssistantError(
+                        f"Attachment file not found: {file_path_str}"
+                    )
+                file_data = await self.hass.async_add_executor_job(
+                    file_path.read_bytes
+                )
+                mime_type, _ = mimetypes.guess_type(file_path.name)
+                if mime_type:
+                    main_type, sub_type = mime_type.split("/", 1)
+                else:
+                    main_type, sub_type = "application", "octet-stream"
+                msg.add_attachment(
+                    file_data,
+                    maintype=main_type,
+                    subtype=sub_type,
+                    filename=file_path.name,
+                )
+
+        raw_bytes = msg.as_bytes()
+        raw_b64 = (
+            base64.urlsafe_b64encode(raw_bytes).decode("ascii").rstrip("=")
+        )
+        payload = {"raw": raw_b64}
+
+        try:
+            async with asyncio.timeout(30):
+                resp = await self._session.async_request(
+                    "POST", GMAIL_SEND_URL, json=payload
+                )
+                if resp.status in (401, 403):
+                    error_text = await resp.text()
+                    raise HomeAssistantError(
+                        f"Authentication or permission error sending email ({resp.status}): {error_text}. Ensure write scope is authorized."
+                    )
+                if resp.status not in (200, 201):
+                    error_text = await resp.text()
+                    raise HomeAssistantError(
+                        f"Failed to send email via Gmail API ({resp.status}): {error_text}"
+                    )
+                data = await resp.json()
+                return {
+                    "message_id": data.get("id"),
+                    "thread_id": data.get("threadId"),
+                }
+        except TimeoutError as err:
+            raise HomeAssistantError(
+                f"Timeout connecting to Gmail API while sending email: {err}"
+            ) from err
+        except aiohttp.ClientError as err:
+            raise HomeAssistantError(
+                f"Network error connecting to Gmail API while sending email: {err}"
+            ) from err

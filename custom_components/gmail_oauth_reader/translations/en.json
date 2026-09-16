@@ -1,12 +1,22 @@
 {
   "config": {
     "step": {
+      "user": {
+        "title": "Gmail Permissions",
+        "description": "Configure account permissions before connecting to Google.",
+        "data": {
+          "enable_write": "Enable Write Access (Send emails via Home Assistant)"
+        }
+      },
       "pick_implementation": {
         "title": "[%key:common::config_flow::title::oauth2_pick_implementation%]"
       },
       "reauth_confirm": {
         "title": "Reauthenticate with Gmail",
-        "description": "The Gmail OAuth token has expired or was revoked. Please re-authenticate your Google account."
+        "description": "Update or re-authenticate permissions for your Google account.",
+        "data": {
+          "enable_write": "Enable Write Access (Send emails via Home Assistant)"
+        }
       }
     },
     "abort": {
@@ -35,7 +45,8 @@
           "query": "Gmail search query filter",
           "queue_dwell_time": "Queue dwell time per email (seconds)",
           "extract_otp": "Extract 2FA / OTP verification codes",
-          "otp_expiry_minutes": "OTP code expiration (minutes)"
+          "otp_expiry_minutes": "OTP code expiration (minutes)",
+          "enable_write": "Enable Write Access (Send emails via Home Assistant)"
         }
       }
     }

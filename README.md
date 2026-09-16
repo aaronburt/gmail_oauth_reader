@@ -25,6 +25,7 @@ A production-ready custom Home Assistant integration that securely connects to t
 5. On the **Scopes** page, click **Add or Remove Scopes**, manually add:
    - `https://www.googleapis.com/auth/gmail.modify`
    - `https://www.googleapis.com/auth/pubsub` (for Pub/Sub Pull mode)
+   - `https://www.googleapis.com/auth/gmail.send` (optional: only required if enabling Write Access to send emails)
 6. Click **Update** and **Save and Continue**.
 7. On the **Test users** page, click **Add Users** and enter your personal Gmail address.
 
@@ -79,8 +80,9 @@ Restart Home Assistant.
 1. In Home Assistant, go to **Settings** > **Devices & Services** > **Add Integration**.
 2. Search for **Gmail OAuth Reader**.
 3. If prompted, input your **Client ID** and **Client Secret** obtained from Google Cloud Console.
-4. Follow the OAuth prompt to log into Google and grant permissions.
-5. Once complete, your Gmail address will appear as the integration entry name.
+4. When prompted, choose whether to enable **Write Access** (optional: requests `https://www.googleapis.com/auth/gmail.send` to allow sending emails from Home Assistant).
+5. Follow the OAuth prompt to log into Google and grant permissions.
+6. Once complete, your Gmail address will appear as the integration entry name.
 
 ---
 
@@ -145,6 +147,7 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
 - **Search Query filter**: e.g. `is:unread label:INBOX -category:promotions` (default: `is:unread label:INBOX`).
 - **Extract 2FA / OTP verification codes**: Toggle automatic scanning for verification codes and queue fast-tracking (default: enabled).
 - **OTP code expiration**: 1 to 60 minutes retention window before the OTP sensor clears back to `'idle'` (default: 15 minutes).
+- **Enable Write Access**: Toggle outbound email sending permission. Enabling write access initiates a Google OAuth re-authentication to grant `https://www.googleapis.com/auth/gmail.send`.
 
 ---
 
@@ -181,6 +184,8 @@ The integration supports Home Assistant's built-in **Download Diagnostics** feat
   Modifies labels on an email (e.g. `mark_as_read: true`, `archive: true`, `add_labels: ["..."]`, `remove_labels: ["..."]`).
 - **`gmail_oauth_reader.download_attachment`**:
   Downloads an attachment to Home Assistant storage (default: `www/gmail_attachments/<filename>`).
+- **`gmail_oauth_reader.send_email`**:
+  Sends an outbound email via the Gmail REST API (`SupportsResponse.OPTIONAL`). Supports plain text, HTML, CC, BCC, Reply-To, and local file attachments. Requires write access scope (`https://www.googleapis.com/auth/gmail.send`) enabled by the user. Returns `message_id` and `thread_id`.
 
 ---
 
@@ -246,6 +251,31 @@ action:
 
         **Subject:** {{ trigger.event.data.subject }}
       notification_id: "gmail_otp_{{ trigger.event.data.message_id }}"
+```
+
+### Example 4: Send Outbound Email with Attachment
+```yaml
+alias: "Security - Send Snapshot on Alarm Trigger"
+trigger:
+  - platform: state
+    entity_id: alarm_control_panel.home_alarm
+    to: "triggered"
+action:
+  # 1. Capture camera snapshot to local storage
+  - action: camera.snapshot
+    target:
+      entity_id: camera.driveway
+    data:
+      filename: "/config/www/security_alert.jpg"
+  # 2. Send email with attached snapshot
+  - action: gmail_oauth_reader.send_email
+    data:
+      to: "security-alerts@example.com"
+      subject: "Security Alarm Triggered - Snapshot Attached"
+      body: "The home alarm was triggered. Driveway camera snapshot attached."
+      html_body: "<h2>Alarm Triggered</h2><p>Driveway snapshot captured.</p>"
+      attachments:
+        - "/config/www/security_alert.jpg"
 ```
 
 ---

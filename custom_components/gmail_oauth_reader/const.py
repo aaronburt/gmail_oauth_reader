@@ -3,10 +3,13 @@ from typing import Final
 DOMAIN: Final = "gmail_oauth_reader"
 
 GMAIL_MESSAGES_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+GMAIL_SEND_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 GMAIL_PROFILE_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/profile"
 GMAIL_WATCH_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/watch"
 GMAIL_STOP_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/stop"
 PUBSUB_BASE_URL: Final = "https://pubsub.googleapis.com/v1"
+
+SCOPE_GMAIL_SEND: Final = "https://www.googleapis.com/auth/gmail.send"
 
 SCOPES: Final = [
     "https://www.googleapis.com/auth/gmail.modify",
@@ -33,6 +36,7 @@ CONF_SAFETY_POLL_INTERVAL: Final = "safety_poll_interval"
 CONF_QUEUE_DWELL_TIME: Final = "queue_dwell_time"
 CONF_EXTRACT_OTP: Final = "extract_otp"
 CONF_OTP_EXPIRY_MINUTES: Final = "otp_expiry_minutes"
+CONF_ENABLE_WRITE: Final = "enable_write"
 DEFAULT_DOWNLOAD_DIR: Final = "www/gmail_attachments"
 
 DEFAULT_POLL_INTERVAL: Final = 60
@@ -40,6 +44,9 @@ DEFAULT_SAFETY_POLL_INTERVAL: Final = 1800
 DEFAULT_QUEUE_DWELL_TIME: Final = 5
 DEFAULT_EXTRACT_OTP: Final = True
 DEFAULT_OTP_EXPIRY_MINUTES: Final = 15
+DEFAULT_ENABLE_WRITE: Final = False
+
+SERVICE_SEND_EMAIL: Final = "send_email"
 
 MIN_POLL_INTERVAL: Final = 30
 MAX_POLL_INTERVAL: Final = 600

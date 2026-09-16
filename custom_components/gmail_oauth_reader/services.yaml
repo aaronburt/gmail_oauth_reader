@@ -87,3 +87,66 @@ download_attachment:
       description: Optional configuration entry ID if multiple Gmail accounts are configured.
       selector:
         text:
+
+send_email:
+  name: Send Email
+  description: Sends an email via the Gmail REST API (requires write scope enabled by the user).
+  fields:
+    to:
+      name: Recipient(s)
+      description: Email address or list of recipient email addresses.
+      required: true
+      example: "recipient@example.com"
+      selector:
+        object:
+    subject:
+      name: Subject
+      description: The subject line of the email.
+      required: true
+      example: "Home Assistant Notification"
+      selector:
+        text:
+    body:
+      name: Message Body
+      description: Plain-text body content of the email.
+      example: "Motion detected in the backyard."
+      selector:
+        text:
+          multiline: true
+    html_body:
+      name: HTML Body
+      description: HTML-formatted body content of the email.
+      example: "<h1>Alert</h1><p>Motion detected in the backyard.</p>"
+      selector:
+        text:
+          multiline: true
+    cc:
+      name: CC
+      description: Optional CC email address or list of addresses.
+      example: "cc@example.com"
+      selector:
+        object:
+    bcc:
+      name: BCC
+      description: Optional BCC email address or list of addresses.
+      example: "archive@example.com"
+      selector:
+        object:
+    reply_to:
+      name: Reply-To
+      description: Optional Reply-To address.
+      example: "support@example.com"
+      selector:
+        text:
+    attachments:
+      name: Attachments
+      description: List of local file paths on Home Assistant to attach (e.g. /config/www/snapshot.jpg).
+      example:
+        - "/config/www/snapshot.jpg"
+      selector:
+        object:
+    entry_id:
+      name: Config Entry ID
+      description: Optional configuration entry ID if multiple Gmail accounts are configured.
+      selector:
+        text:
