@@ -28,7 +28,8 @@
           "poll_interval": "Polling interval (seconds)",
           "queue_dwell_time": "Queue dwell time per email (seconds)",
           "query": "Gmail search query filter",
-          "extract_otp": "Extract 2FA / OTP verification codes"
+          "extract_otp": "Extract 2FA / OTP verification codes",
+          "otp_expiry_minutes": "OTP code expiration (minutes)"
         }
       }
     }
@@ -42,6 +43,9 @@
     "sensor": {
       "latest_email": {
         "name": "Latest Email"
+      },
+      "latest_otp": {
+        "name": "Latest OTP"
       },
       "unread_count": {
         "name": "Unread Count"

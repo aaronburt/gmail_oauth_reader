@@ -26,6 +26,7 @@ async def async_setup_entry(
     async_add_entities(
         [
             GmailLatestEmailSensor(coordinator, entry),
+            GmailLatestOTPSensor(coordinator, entry),
             GmailUnreadCountSensor(coordinator, entry),
             GmailLastPolledSensor(coordinator, entry),
             GmailQueueSizeSensor(coordinator, entry),
@@ -71,6 +72,56 @@ class GmailLatestEmailSensor(
             for email_item in reversed(self.coordinator.recent_emails)
         ]
         return attributes
+
+
+class GmailLatestOTPSensor(
+    CoordinatorEntity[GmailDataUpdateCoordinator], SensorEntity
+):
+    _attr_has_entity_name = True
+    _attr_translation_key = "latest_otp"
+
+    def __init__(
+        self,
+        coordinator: GmailDataUpdateCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"{entry.unique_id}_latest_otp"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.unique_id))},
+            name=f"Gmail ({entry.title})",
+            manufacturer="Google",
+            model="Gmail API",
+        )
+
+    @property
+    def native_value(self) -> str:
+        if (
+            self.coordinator.latest_otp is not None
+            and self.coordinator.latest_otp.otp_code
+        ):
+            return self.coordinator.latest_otp.otp_code
+        return STATE_IDLE
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        otp_message = self.coordinator.latest_otp
+        if otp_message is None:
+            return {}
+
+        expires_at = self.coordinator.otp_expires_at
+        return {
+            "sender": otp_message.sender,
+            "sender_name": otp_message.sender_name,
+            "sender_email": otp_message.sender_email,
+            "subject": otp_message.subject,
+            "received_time": otp_message.received_time,
+            "expires_at": expires_at.isoformat() if expires_at is not None else None,
+            "service_name": self.coordinator.latest_otp_service_name,
+            "message_id": otp_message.message_id,
+            "body_preview": otp_message.body_preview,
+        }
 
 
 class GmailUnreadCountSensor(

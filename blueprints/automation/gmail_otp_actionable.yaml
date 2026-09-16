@@ -1,0 +1,120 @@
+blueprint:
+  name: Gmail 2FA / OTP Actionable Notification
+  description: >
+    Sends an actionable high-priority mobile notification with "Copy Code" and
+    "Mark as Read" buttons whenever a new verification code is detected, and
+    automatically clears the notification when the OTP expires.
+  domain: automation
+  input:
+    otp_sensor:
+      name: OTP Sensor
+      description: The Gmail Latest OTP sensor to monitor.
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+    notify_device:
+      name: Device to Notify
+      description: The mobile device running Home Assistant Companion App.
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+    auto_dismiss:
+      name: Auto-dismiss on Expiration
+      description: Clear the notification from the device when the OTP expires.
+      default: true
+      selector:
+        boolean: {}
+
+mode: queued
+max: 10
+
+variables:
+  otp_sensor_entity: !input otp_sensor
+  auto_dismiss_enabled: !input auto_dismiss
+
+trigger:
+  - platform: state
+    entity_id: !input otp_sensor
+    not_to:
+      - "idle"
+      - "unknown"
+      - "unavailable"
+    id: otp_received
+
+  - platform: state
+    entity_id: !input otp_sensor
+    to: "idle"
+    id: otp_expired
+
+  - platform: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: "GMAIL_MARK_READ"
+    id: action_mark_read
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: otp_received
+        sequence:
+          - domain: mobile_app
+            type: notify
+            device_id: !input notify_device
+            title: "{{ '2FA Code: ' ~ trigger.to_state.state }}"
+            message: >-
+              {% set service = trigger.to_state.attributes.service_name | default('', true) %}
+              {% set sender = trigger.to_state.attributes.sender | default('', true) %}
+              {% set subject = trigger.to_state.attributes.subject | default('', true) %}
+              {% if service %}**{{ service }}**{% else %}**{{ sender }}**{% endif %}
+
+              Code: `{{ trigger.to_state.state }}`
+
+              {{ subject }}
+            data:
+              tag: "gmail_otp_notification"
+              group: "gmail-otp"
+              channel: "Verification Codes"
+              importance: "high"
+              priority: "high"
+              ttl: 0
+              actions:
+                - action: "copy"
+                  title: "Copy Code"
+                  clipboard: "{{ trigger.to_state.state }}"
+                - action: "GMAIL_MARK_READ"
+                  title: "Mark as Read"
+
+      - conditions:
+          - condition: trigger
+            id: otp_expired
+          - condition: template
+            value_template: "{{ auto_dismiss_enabled }}"
+        sequence:
+          - domain: mobile_app
+            type: notify
+            device_id: !input notify_device
+            message: "clear_notification"
+            data:
+              tag: "gmail_otp_notification"
+
+      - conditions:
+          - condition: trigger
+            id: action_mark_read
+        sequence:
+          - variables:
+              target_msg_id: "{{ state_attr(otp_sensor_entity, 'message_id') }}"
+          - condition: template
+            value_template: "{{ target_msg_id is defined and target_msg_id not in [None, '', 'unknown', 'unavailable'] }}"
+          - action: gmail_oauth_reader.modify_email
+            data:
+              message_id: "{{ target_msg_id }}"
+              mark_as_read: true
+          - domain: mobile_app
+            type: notify
+            device_id: !input notify_device
+            message: "clear_notification"
+            data:
+              tag: "gmail_otp_notification"

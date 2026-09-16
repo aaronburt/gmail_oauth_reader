@@ -50,6 +50,9 @@ Copy the `custom_components/gmail_oauth_reader` directory into your Home Assista
 
 ```
 /config/
+├── blueprints/
+│   └── automation/
+│       └── gmail_otp_actionable.yaml
 └── custom_components/
     └── gmail_oauth_reader/
         ├── __init__.py
@@ -57,6 +60,7 @@ Copy the `custom_components/gmail_oauth_reader` directory into your Home Assista
         ├── const.py
         ├── config_flow.py
         ├── coordinator.py
+        ├── otp.py
         ├── sensor.py
         ├── button.py
         ├── diagnostics.py
@@ -98,6 +102,7 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
 - **Queue dwell time**: 1 to 60 seconds (default: 5 seconds).
 - **Search Query filter**: e.g. `is:unread label:INBOX -category:promotions` (default: `is:unread label:INBOX`).
 - **Extract 2FA / OTP verification codes**: Toggle automatic scanning for verification codes and queue fast-tracking (default: enabled).
+- **OTP code expiration**: 1 to 60 minutes retention window before the OTP sensor clears back to `'idle'` (default: 15 minutes).
 
 ---
 
@@ -107,16 +112,19 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
 1. **`sensor.gmail_latest_email`**:
    - **State**: Gmail unique `message_id` while active; `'idle'` when queue is clear.
    - **Attributes**: `sender`, `sender_name`, `sender_email`, `subject`, `body_preview`, `received_time`, `message_id`, `otp_code`, `unread_count`, `queue_size`, `messages` (rotating list of last 20 emails, newest first).
-2. **`sensor.gmail_unread_count`**:
+2. **`sensor.gmail_latest_otp`**:
+   - **State**: The active OTP / 2FA verification code (e.g. `482910`); `'idle'` when expired or empty.
+   - **Attributes**: `sender`, `sender_name`, `sender_email`, `subject`, `received_time`, `expires_at`, `service_name` (extracted provider name, e.g. "GitHub", "Google"), `message_id`, `body_preview`.
+3. **`sensor.gmail_unread_count`**:
    - **State**: Integer representing total unread emails matching your search query.
    - **State Class**: `measurement` (enables history graphs, gauges, and dashboard badges).
-3. **`sensor.gmail_last_polled`**:
+4. **`sensor.gmail_last_polled`**:
    - **State**: Timestamp of when the integration last polled the Gmail server.
    - **Device Class**: `timestamp`
-4. **`sensor.gmail_queue_size`**:
+5. **`sensor.gmail_queue_size`**:
    - **State**: Integer count of pending emails waiting in the paced FIFO queue.
    - **State Class**: `measurement`
-5. **`button.gmail_poll_now`**:
+6. **`button.gmail_poll_now`**:
    - **State**: Timestamp of last button press.
    - **Action**: Triggers an immediate refresh and poll of the Gmail API without waiting for the polling timer.
 
@@ -196,3 +204,22 @@ action:
         **Subject:** {{ trigger.event.data.subject }}
       notification_id: "gmail_otp_{{ trigger.event.data.message_id }}"
 ```
+
+---
+
+## 6. Actionable Notification Blueprint
+
+The repository includes a ready-to-use Home Assistant blueprint: [`blueprints/automation/gmail_otp_actionable.yaml`](blueprints/automation/gmail_otp_actionable.yaml).
+
+### Features
+- **Triggers**: Listens for state changes on `sensor.gmail_latest_otp` from `'idle'` to an active verification code.
+- **Actionable Buttons**:
+  - **Copy Code**: Direct mobile clipboard copy action (`action: copy` with `clipboard: "{{ trigger.to_state.state }}"`).
+  - **Mark as Read**: Triggers `gmail_oauth_reader.modify_email` to mark the verification email as read and dismiss the notification.
+- **Auto-Dismissal**: When `sensor.gmail_latest_otp` transitions back to `'idle'` (upon expiration), the notification is automatically cleared from your device's notification tray.
+
+### Installation
+1. Copy `blueprints/automation/gmail_otp_actionable.yaml` into your Home Assistant `/config/blueprints/automation/` directory.
+2. In Home Assistant, navigate to **Settings** > **Automations & Scenes** > **Blueprints**.
+3. Locate **Gmail 2FA / OTP Actionable Notification** and click **Create Automation**.
+4. Select your **OTP Sensor** (`sensor.gmail_latest_otp`) and target **Device to Notify**.

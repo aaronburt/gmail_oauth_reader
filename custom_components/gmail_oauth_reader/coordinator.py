@@ -20,9 +20,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     CONF_EXTRACT_OTP,
+    CONF_OTP_EXPIRY_MINUTES,
     CONF_QUERY,
     CONF_QUEUE_DWELL_TIME,
     DEFAULT_EXTRACT_OTP,
+    DEFAULT_OTP_EXPIRY_MINUTES,
     DEFAULT_QUERY,
     DEFAULT_QUEUE_DWELL_TIME,
     DOMAIN,
@@ -78,6 +80,27 @@ def sanitize_text(text: str, max_length: int = MAX_BODY_PREVIEW_LENGTH) -> str:
     if len(normalized) > max_length:
         return normalized[:max_length].rstrip() + "..."
     return normalized
+
+
+def extract_service_name(sender_name: str, sender_email: str) -> str:
+    if sender_name:
+        cleaned = re.split(r"[-–—:|]", sender_name)[0].strip()
+        cleaned = re.sub(
+            r"(?i)\b(team|support|security|service|account|alerts?|notifications?|no-?reply)\b",
+            "",
+            cleaned,
+        ).strip()
+        if cleaned:
+            return cleaned
+    if sender_email and "@" in sender_email:
+        domain = sender_email.split("@", 1)[1].lower()
+        parts = domain.split(".")
+        if len(parts) >= 2:
+            base = parts[-2]
+            if base in ("co", "com", "org", "net", "gov", "edu") and len(parts) >= 3:
+                base = parts[-3]
+            return base.capitalize()
+    return ""
 
 
 def parse_email_date(raw_date: str) -> str:
@@ -166,6 +189,9 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         self._queue_task: asyncio.Task[None] | None = None
         self._unread_count: int = 0
         self._last_polled: datetime | None = None
+        self._latest_otp: GmailMessage | None = None
+        self._otp_received_at: datetime | None = None
+        self._otp_expiry_timer: asyncio.Task[None] | None = None
 
     @property
     def last_polled(self) -> datetime | None:
@@ -187,10 +213,38 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
     def recent_emails(self) -> list[GmailMessage]:
         return list(self._recent_emails)
 
+    @property
+    def latest_otp(self) -> GmailMessage | None:
+        return self._latest_otp
+
+    @property
+    def otp_received_at(self) -> datetime | None:
+        return self._otp_received_at
+
+    @property
+    def otp_expires_at(self) -> datetime | None:
+        if self._otp_received_at is None:
+            return None
+        expiry_minutes = self._entry.options.get(
+            CONF_OTP_EXPIRY_MINUTES, DEFAULT_OTP_EXPIRY_MINUTES
+        )
+        return self._otp_received_at + timedelta(minutes=expiry_minutes)
+
+    @property
+    def latest_otp_service_name(self) -> str:
+        if self._latest_otp is None:
+            return ""
+        return extract_service_name(
+            self._latest_otp.sender_name, self._latest_otp.sender_email
+        )
+
     def cancel_queue_task(self) -> None:
         if self._queue_task is not None and not self._queue_task.done():
             self._queue_task.cancel()
             self._queue_task = None
+        if self._otp_expiry_timer is not None and not self._otp_expiry_timer.done():
+            self._otp_expiry_timer.cancel()
+            self._otp_expiry_timer = None
 
     def _record_seen(self, message_id: str) -> None:
         self._seen_message_ids[message_id] = None
@@ -338,6 +392,8 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
                 self._active_message = self._queue.popleft()
                 self._last_message = self._active_message
                 self._recent_emails.append(self._active_message)
+                if self._active_message.otp_code is not None:
+                    self._set_latest_otp(self._active_message)
                 self.hass.bus.async_fire(
                     "gmail_oauth_reader_new_email", asdict(self._active_message)
                 )
@@ -346,6 +402,28 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         finally:
             self._active_message = None
             self.async_set_updated_data(None)
+
+    def _set_latest_otp(self, message: GmailMessage) -> None:
+        self._latest_otp = message
+        self._otp_received_at = datetime.now(timezone.utc)
+        if self._otp_expiry_timer is not None and not self._otp_expiry_timer.done():
+            self._otp_expiry_timer.cancel()
+        expiry_minutes = self._entry.options.get(
+            CONF_OTP_EXPIRY_MINUTES, DEFAULT_OTP_EXPIRY_MINUTES
+        )
+        self._otp_expiry_timer = self.hass.async_create_background_task(
+            self._async_expire_otp(expiry_minutes * 60),
+            "gmail_otp_expiry_timer",
+        )
+
+    async def _async_expire_otp(self, delay_seconds: int) -> None:
+        try:
+            await asyncio.sleep(delay_seconds)
+            self._latest_otp = None
+            self._otp_received_at = None
+            self.async_update_listeners()
+        except asyncio.CancelledError:
+            pass
 
     async def async_get_full_email(self, message_id: str) -> dict[str, Any]:
         url = f"{GMAIL_MESSAGES_URL}/{message_id}"

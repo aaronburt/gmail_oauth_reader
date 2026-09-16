@@ -9,6 +9,9 @@
       "latest_email": {
         "default": "mdi:email"
       },
+      "latest_otp": {
+        "default": "mdi:shield-key-outline"
+      },
       "unread_count": {
         "default": "mdi:email-outline"
       },

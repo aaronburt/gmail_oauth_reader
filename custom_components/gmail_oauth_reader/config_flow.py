@@ -10,17 +10,21 @@ from homeassistant.helpers import config_entry_oauth2_flow
 
 from .const import (
     CONF_EXTRACT_OTP,
+    CONF_OTP_EXPIRY_MINUTES,
     CONF_POLL_INTERVAL,
     CONF_QUERY,
     CONF_QUEUE_DWELL_TIME,
     DEFAULT_EXTRACT_OTP,
+    DEFAULT_OTP_EXPIRY_MINUTES,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_QUERY,
     DEFAULT_QUEUE_DWELL_TIME,
     DOMAIN,
     GMAIL_PROFILE_URL,
+    MAX_OTP_EXPIRY_MINUTES,
     MAX_POLL_INTERVAL,
     MAX_QUEUE_DWELL_TIME,
+    MIN_OTP_EXPIRY_MINUTES,
     MIN_POLL_INTERVAL,
     MIN_QUEUE_DWELL_TIME,
     SCOPES,
@@ -114,6 +118,18 @@ class GmailOptionsFlowHandler(OptionsFlowWithConfigEntry):
                         CONF_EXTRACT_OTP, DEFAULT_EXTRACT_OTP
                     ),
                 ): bool,
+                vol.Optional(
+                    CONF_OTP_EXPIRY_MINUTES,
+                    default=self.options.get(
+                        CONF_OTP_EXPIRY_MINUTES, DEFAULT_OTP_EXPIRY_MINUTES
+                    ),
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(
+                        min=MIN_OTP_EXPIRY_MINUTES,
+                        max=MAX_OTP_EXPIRY_MINUTES,
+                    ),
+                ),
             }
         )
 
