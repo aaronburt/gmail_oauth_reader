@@ -1,8 +1,11 @@
 from datetime import timedelta
 from pathlib import Path
 
+import aiohttp
+from aiohttp import web
 import voluptuous as vol
 
+from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import (
@@ -16,9 +19,12 @@ from homeassistant.helpers import config_entry_oauth2_flow, config_validation as
 
 from .const import (
     CONF_POLL_INTERVAL,
+    CONF_UPDATE_MODE,
+    CONF_WEBHOOK_ID,
     DEFAULT_DOWNLOAD_DIR,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
+    MODE_PUBSUB_PUSH,
 )
 from .coordinator import GmailDataUpdateCoordinator
 
@@ -57,6 +63,38 @@ SCHEMA_DOWNLOAD_ATTACHMENT = vol.Schema(
 )
 
 
+def get_webhook_id(entry: ConfigEntry) -> str:
+    return entry.options.get(CONF_WEBHOOK_ID) or f"{DOMAIN}_{entry.entry_id}"
+
+
+def async_register_push_webhook(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: GmailDataUpdateCoordinator,
+) -> None:
+    webhook_id = get_webhook_id(entry)
+    if webhook.async_is_registered(hass, webhook_id):
+        return
+
+    async def handle_push_webhook(
+        hass: HomeAssistant, w_id: str, request: web.Request
+    ) -> web.Response:
+        await coordinator.async_handle_pubsub_notification()
+        return web.Response(status=200, text="OK")
+
+    webhook.async_register(
+        hass, DOMAIN, f"Gmail Push ({entry.title})", webhook_id, handle_push_webhook
+    )
+
+
+def async_unregister_push_webhook(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    webhook_id = get_webhook_id(entry)
+    if webhook.async_is_registered(hass, webhook_id):
+        webhook.async_unregister(hass, webhook_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     implementation = (
         await config_entry_oauth2_flow.async_get_config_entry_implementation(
@@ -82,6 +120,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+    await coordinator.async_apply_update_mode()
+    if coordinator.update_mode == MODE_PUBSUB_PUSH:
+        async_register_push_webhook(hass, entry, coordinator)
 
     def get_coordinator(entry_id: str | None) -> GmailDataUpdateCoordinator:
         if entry_id and entry_id in hass.data[DOMAIN]:
@@ -186,8 +228,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
+        async_unregister_push_webhook(hass, entry)
         coordinator: GmailDataUpdateCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
         coordinator.cancel_queue_task()
+        await coordinator.async_stop_realtime()
         if not hass.data[DOMAIN]:
             for service_name in (
                 SERVICE_GET_EMAIL_CONTENT,
@@ -201,5 +245,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     coordinator: GmailDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
-    new_interval = entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
-    coordinator.update_interval = timedelta(seconds=new_interval)
+    await coordinator.async_apply_update_mode()
+    if coordinator.update_mode == MODE_PUBSUB_PUSH:
+        async_register_push_webhook(hass, entry, coordinator)
+    else:
+        async_unregister_push_webhook(hass, entry)

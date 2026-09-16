@@ -175,6 +175,18 @@ class GmailLastPolledSensor(
     def native_value(self) -> datetime | None:
         return self.coordinator.last_polled
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "update_mode": self.coordinator.update_mode,
+            "watch_active": self.coordinator.watch_active,
+            "watch_expiration": (
+                self.coordinator.watch_expiration.isoformat()
+                if self.coordinator.watch_expiration
+                else None
+            ),
+        }
+
 
 class GmailQueueSizeSensor(
     CoordinatorEntity[GmailDataUpdateCoordinator], SensorEntity

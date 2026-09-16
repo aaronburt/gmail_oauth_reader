@@ -24,10 +24,16 @@
     "step": {
       "init": {
         "title": "Gmail Reader Options",
+        "description": "Configure ingestion mode (Polling or Google Cloud Pub/Sub Push/Pull). For Push mode, configure your Google Cloud Pub/Sub Push subscription to deliver to:\n{webhook_url}",
         "data": {
-          "poll_interval": "Polling interval (seconds)",
-          "queue_dwell_time": "Queue dwell time per email (seconds)",
+          "update_mode": "Update mode",
+          "poll_interval": "Polling interval (seconds, Polling mode only)",
+          "pubsub_project_id": "Google Cloud project ID",
+          "pubsub_topic": "Pub/Sub topic name",
+          "pubsub_subscription": "Pub/Sub subscription ID (Pull mode only)",
+          "safety_poll_interval": "Safety poll interval (seconds, Pub/Sub mode)",
           "query": "Gmail search query filter",
+          "queue_dwell_time": "Queue dwell time per email (seconds)",
           "extract_otp": "Extract 2FA / OTP verification codes",
           "otp_expiry_minutes": "OTP code expiration (minutes)"
         }

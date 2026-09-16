@@ -10,7 +10,9 @@ A production-ready custom Home Assistant integration that securely connects to t
 1. Navigate to the [Google Cloud Console](https://console.cloud.google.com/).
 2. Create a new project named **Home Assistant Gmail**.
 3. Open **APIs & Services** > **Library**.
-4. Search for **Gmail API** and click **Enable**.
+4. Search for and enable both:
+   - **Gmail API**
+   - **Cloud Pub/Sub API** (only required if using Realtime Push or Pull mode)
 
 ### OAuth Consent Screen Setup
 1. Go to **APIs & Services** > **OAuth consent screen**.
@@ -20,8 +22,9 @@ A production-ready custom Home Assistant integration that securely connects to t
    - **User support email**: Select your Google account
    - **Developer contact information**: Enter your email
 4. Click **Save and Continue**.
-5. On the **Scopes** page, click **Add or Remove Scopes**, manually add or select:
-   - `https://www.googleapis.com/auth/gmail.readonly`
+5. On the **Scopes** page, click **Add or Remove Scopes**, manually add:
+   - `https://www.googleapis.com/auth/gmail.modify`
+   - `https://www.googleapis.com/auth/pubsub` (for Pub/Sub Pull mode)
 6. Click **Update** and **Save and Continue**.
 7. On the **Test users** page, click **Add Users** and enter your personal Gmail address.
 
@@ -60,6 +63,7 @@ Copy the `custom_components/gmail_oauth_reader` directory into your Home Assista
         ├── const.py
         ├── config_flow.py
         ├── coordinator.py
+        ├── pubsub.py
         ├── otp.py
         ├── sensor.py
         ├── button.py
@@ -75,15 +79,50 @@ Restart Home Assistant.
 1. In Home Assistant, go to **Settings** > **Devices & Services** > **Add Integration**.
 2. Search for **Gmail OAuth Reader**.
 3. If prompted, input your **Client ID** and **Client Secret** obtained from Google Cloud Console.
-4. Follow the OAuth prompt to log into Google and grant read-only permission.
+4. Follow the OAuth prompt to log into Google and grant permissions.
 5. Once complete, your Gmail address will appear as the integration entry name.
 
 ---
 
-## 3. Architecture & Queue Pacing
+## 3. Realtime Ingestion (Google Cloud Pub/Sub)
+
+The integration supports three update modes:
+1. **Polling (Traditional, Default)**: Periodically queries the Gmail API at your configured interval (30–600s). No Google Cloud Pub/Sub setup required.
+2. **Google Cloud Pub/Sub (Pull)**: Connects to a Google Cloud Pub/Sub subscription using lightweight asynchronous REST long-polling. Works universally behind NAT and firewalls without requiring an external Home Assistant URL or open ports.
+3. **Google Cloud Pub/Sub (Push / Webhook)**: Google Cloud Pub/Sub delivers push notifications directly to a Home Assistant Webhook URL (ideal for setups with Nabu Casa / Cloudflare / public domain).
+
+### Google Cloud Pub/Sub Setup (Optional)
+If you want to use Realtime Push or Pull mode:
+
+1. **Create a Pub/Sub Topic**:
+   - In Google Cloud Console, go to **Pub/Sub** > **Topics**.
+   - Click **Create Topic** (e.g. `gmail-notifications`).
+2. **Grant Gmail Publishing Permission**:
+   - Select your topic and open the **Permissions** panel.
+   - Click **Add Principal**.
+   - Enter `gmail-api-push@system.gserviceaccount.com`.
+   - Assign the role **Pub/Sub Publisher**.
+3. **Configure Subscription**:
+   - **For Pull mode**:
+     - Under your topic, click **Create Subscription**.
+     - Choose **Pull** delivery. Set Subscription ID (e.g. `gmail-sub`).
+   - **For Push mode**:
+     - In Home Assistant, open integration **Configure** to find your unique Webhook URL (`{webhook_url}`).
+     - In Google Cloud Console under your topic, click **Create Subscription**.
+     - Choose **Push** delivery and enter your Home Assistant Webhook URL as the endpoint URL.
+4. **Configure Home Assistant Options**:
+   - Open integration **Configure** in Home Assistant.
+   - Select your desired **Update mode**.
+   - Enter your **Google Cloud Project ID**, **Topic name**, and (for Pull mode) **Subscription ID**.
+   - The integration will automatically register a 7-day Gmail watch and renew it every 4 days.
+
+---
+
+## 4. Architecture & Queue Pacing
 
 ### Queue Pacing Engine & 2FA Priority Fast-Tracking
-When multiple unread emails arrive between polling cycles:
+When multiple unread emails arrive between polling cycles or in rapid Pub/Sub batches:
+- Incoming notifications are debounced within 1.5s to coalesce rapid arrival bursts.
 - All new unread message IDs are fetched and pushed into an internal FIFO queue.
 - **Priority Fast-Tracking**: Incoming emails containing 2FA or OTP verification codes automatically jump ahead of routine messages to the front of the queue, ensuring near-zero latency dispatch.
 - The coordinator runs an asynchronous dispatcher that pops each email sequentially.
@@ -98,7 +137,10 @@ On initial startup or integration reload:
 
 ### Options Flow (Dynamic Configuration)
 Access the integration's **Configure** button under **Settings** > **Devices & Services** to adjust:
-- **Polling interval**: 30 to 600 seconds (default: 60 seconds).
+- **Update mode**: Choose between `Polling (Traditional)`, `Google Cloud Pub/Sub (Pull)`, or `Google Cloud Pub/Sub (Push / Webhook)` (default: Polling).
+- **Polling interval**: 30 to 600 seconds (default: 60 seconds, used in Polling mode).
+- **Google Cloud project ID / Topic name / Subscription ID**: Required when using Pub/Sub modes.
+- **Safety poll interval**: 300 to 86400 seconds (default: 1800 seconds / 30 mins) as a slow backup refresh in Pub/Sub modes.
 - **Queue dwell time**: 1 to 60 seconds (default: 5 seconds).
 - **Search Query filter**: e.g. `is:unread label:INBOX -category:promotions` (default: `is:unread label:INBOX`).
 - **Extract 2FA / OTP verification codes**: Toggle automatic scanning for verification codes and queue fast-tracking (default: enabled).
@@ -106,7 +148,7 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
 
 ---
 
-## 4. Entities & Actions Specification
+## 5. Entities & Actions Specification
 
 ### Entities
 1. **`sensor.gmail_latest_email`**:
@@ -119,8 +161,9 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
    - **State**: Integer representing total unread emails matching your search query.
    - **State Class**: `measurement` (enables history graphs, gauges, and dashboard badges).
 4. **`sensor.gmail_last_polled`**:
-   - **State**: Timestamp of when the integration last polled the Gmail server.
+   - **State**: Timestamp of when the integration last polled or received an update from the Gmail server.
    - **Device Class**: `timestamp`
+   - **Attributes**: `update_mode` (`polling`, `pubsub_pull`, `pubsub_push`), `watch_active` (`true`/`false`), `watch_expiration` (ISO datetime timestamp).
 5. **`sensor.gmail_queue_size`**:
    - **State**: Integer count of pending emails waiting in the paced FIFO queue.
    - **State Class**: `measurement`
@@ -141,7 +184,7 @@ The integration supports Home Assistant's built-in **Download Diagnostics** feat
 
 ---
 
-## 5. Home Assistant Automation Examples
+## 6. Home Assistant Automation Examples
 
 ### Example 1: Notification with State Trigger
 ```yaml
@@ -207,7 +250,7 @@ action:
 
 ---
 
-## 6. Actionable Notification Blueprint
+## 7. Actionable Notification Blueprint
 
 The repository includes a ready-to-use Home Assistant blueprint: [`blueprints/automation/gmail_otp_actionable.yaml`](blueprints/automation/gmail_otp_actionable.yaml).
 

@@ -4,19 +4,39 @@ DOMAIN: Final = "gmail_oauth_reader"
 
 GMAIL_MESSAGES_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
 GMAIL_PROFILE_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/profile"
+GMAIL_WATCH_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/watch"
+GMAIL_STOP_URL: Final = "https://gmail.googleapis.com/gmail/v1/users/me/stop"
+PUBSUB_BASE_URL: Final = "https://pubsub.googleapis.com/v1"
 
-SCOPES: Final = ["https://www.googleapis.com/auth/gmail.modify"]
+SCOPES: Final = [
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/pubsub",
+]
+
+MODE_POLLING: Final = "polling"
+MODE_PUBSUB_PULL: Final = "pubsub_pull"
+MODE_PUBSUB_PUSH: Final = "pubsub_push"
+
+CONF_UPDATE_MODE: Final = "update_mode"
+DEFAULT_UPDATE_MODE: Final = MODE_POLLING
+
+CONF_PUBSUB_PROJECT_ID: Final = "pubsub_project_id"
+CONF_PUBSUB_TOPIC: Final = "pubsub_topic"
+CONF_PUBSUB_SUBSCRIPTION: Final = "pubsub_subscription"
+CONF_WEBHOOK_ID: Final = "webhook_id"
 
 CONF_QUERY: Final = "query"
 DEFAULT_QUERY: Final = "is:unread label:INBOX"
 
 CONF_POLL_INTERVAL: Final = "poll_interval"
+CONF_SAFETY_POLL_INTERVAL: Final = "safety_poll_interval"
 CONF_QUEUE_DWELL_TIME: Final = "queue_dwell_time"
 CONF_EXTRACT_OTP: Final = "extract_otp"
 CONF_OTP_EXPIRY_MINUTES: Final = "otp_expiry_minutes"
 DEFAULT_DOWNLOAD_DIR: Final = "www/gmail_attachments"
 
 DEFAULT_POLL_INTERVAL: Final = 60
+DEFAULT_SAFETY_POLL_INTERVAL: Final = 1800
 DEFAULT_QUEUE_DWELL_TIME: Final = 5
 DEFAULT_EXTRACT_OTP: Final = True
 DEFAULT_OTP_EXPIRY_MINUTES: Final = 15
@@ -24,11 +44,16 @@ DEFAULT_OTP_EXPIRY_MINUTES: Final = 15
 MIN_POLL_INTERVAL: Final = 30
 MAX_POLL_INTERVAL: Final = 600
 
+MIN_SAFETY_POLL_INTERVAL: Final = 300
+MAX_SAFETY_POLL_INTERVAL: Final = 86400
+
 MIN_QUEUE_DWELL_TIME: Final = 1
 MAX_QUEUE_DWELL_TIME: Final = 60
 
 MIN_OTP_EXPIRY_MINUTES: Final = 1
 MAX_OTP_EXPIRY_MINUTES: Final = 60
+
+WATCH_RENEWAL_DAYS: Final = 4
 
 STATE_IDLE: Final = "idle"
 
