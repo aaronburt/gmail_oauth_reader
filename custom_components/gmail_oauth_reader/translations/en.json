@@ -27,7 +27,8 @@
         "data": {
           "poll_interval": "Polling interval (seconds)",
           "queue_dwell_time": "Queue dwell time per email (seconds)",
-          "query": "Gmail search query filter"
+          "query": "Gmail search query filter",
+          "extract_otp": "Extract 2FA / OTP verification codes"
         }
       }
     }

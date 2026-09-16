@@ -13,6 +13,7 @@ TO_REDACT = {
     "refresh_token",
     "client_id",
     "client_secret",
+    "otp_code",
 }
 
 

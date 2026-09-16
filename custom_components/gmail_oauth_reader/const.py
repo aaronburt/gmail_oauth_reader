@@ -12,10 +12,12 @@ DEFAULT_QUERY: Final = "is:unread label:INBOX"
 
 CONF_POLL_INTERVAL: Final = "poll_interval"
 CONF_QUEUE_DWELL_TIME: Final = "queue_dwell_time"
+CONF_EXTRACT_OTP: Final = "extract_otp"
 DEFAULT_DOWNLOAD_DIR: Final = "www/gmail_attachments"
 
 DEFAULT_POLL_INTERVAL: Final = 60
 DEFAULT_QUEUE_DWELL_TIME: Final = 5
+DEFAULT_EXTRACT_OTP: Final = True
 
 MIN_POLL_INTERVAL: Final = 30
 MAX_POLL_INTERVAL: Final = 600

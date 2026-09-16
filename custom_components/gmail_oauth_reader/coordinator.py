@@ -19,8 +19,10 @@ from homeassistant.helpers.config_entry_oauth2_flow import OAuth2Session
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_EXTRACT_OTP,
     CONF_QUERY,
     CONF_QUEUE_DWELL_TIME,
+    DEFAULT_EXTRACT_OTP,
     DEFAULT_QUERY,
     DEFAULT_QUEUE_DWELL_TIME,
     DOMAIN,
@@ -29,6 +31,7 @@ from .const import (
     MAX_RECENT_EMAILS,
     MAX_SEEN_CACHE_SIZE,
 )
+from .otp import extract_otp_code
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +45,7 @@ class GmailMessage:
     subject: str
     body_preview: str
     received_time: str
+    otp_code: str | None = None
 
 
 def decode_mime_header(header_value: str) -> str:
@@ -232,6 +236,13 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         body_preview = sanitize_text(raw_snippet, MAX_BODY_PREVIEW_LENGTH)
         received_time = parse_email_date(raw_date)
 
+        extract_otp = self._entry.options.get(
+            CONF_EXTRACT_OTP, DEFAULT_EXTRACT_OTP
+        )
+        otp_code = (
+            extract_otp_code(subject, raw_snippet) if extract_otp else None
+        )
+
         return GmailMessage(
             message_id=message_id,
             sender=display_sender,
@@ -240,6 +251,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
             subject=subject,
             body_preview=body_preview,
             received_time=received_time,
+            otp_code=otp_code,
         )
 
     async def _async_update_data(self) -> GmailMessage | None:
@@ -292,8 +304,23 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
                 if details is not None:
                     new_messages.append(details)
 
-        for message in new_messages:
-            self._queue.append(message)
+        extract_otp = self._entry.options.get(
+            CONF_EXTRACT_OTP, DEFAULT_EXTRACT_OTP
+        )
+        if extract_otp:
+            otp_messages = [
+                msg for msg in new_messages if msg.otp_code is not None
+            ]
+            routine_messages = [
+                msg for msg in new_messages if msg.otp_code is None
+            ]
+            for message in reversed(otp_messages):
+                self._queue.appendleft(message)
+            for message in routine_messages:
+                self._queue.append(message)
+        else:
+            for message in new_messages:
+                self._queue.append(message)
 
         if self._queue and (self._queue_task is None or self._queue_task.done()):
             self._queue_task = self.hass.async_create_background_task(
@@ -358,6 +385,15 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         received_time = parse_email_date(headers_lower.get("date", ""))
         text_body, html_body, attachments = extract_mime_bodies_and_attachments(payload)
 
+        extract_otp = self._entry.options.get(
+            CONF_EXTRACT_OTP, DEFAULT_EXTRACT_OTP
+        )
+        otp_code = (
+            extract_otp_code(subject, text_body or data.get("snippet", ""))
+            if extract_otp
+            else None
+        )
+
         return {
             "message_id": message_id,
             "thread_id": data.get("threadId", ""),
@@ -373,6 +409,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
             "snippet": data.get("snippet", ""),
             "text_body": text_body,
             "html_body": html_body,
+            "otp_code": otp_code,
             "attachments": attachments,
             "headers": raw_headers,
         }

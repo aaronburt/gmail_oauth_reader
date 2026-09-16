@@ -78,9 +78,10 @@ Restart Home Assistant.
 
 ## 3. Architecture & Queue Pacing
 
-### Queue Pacing Engine
+### Queue Pacing Engine & 2FA Priority Fast-Tracking
 When multiple unread emails arrive between polling cycles:
 - All new unread message IDs are fetched and pushed into an internal FIFO queue.
+- **Priority Fast-Tracking**: Incoming emails containing 2FA or OTP verification codes automatically jump ahead of routine messages to the front of the queue, ensuring near-zero latency dispatch.
 - The coordinator runs an asynchronous dispatcher that pops each email sequentially.
 - The sensor holds that email's state and attributes for a configurable dwell period (default: 5 seconds).
 - Once the queue is fully drained, the sensor transitions cleanly to `'idle'`.
@@ -96,6 +97,7 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
 - **Polling interval**: 30 to 600 seconds (default: 60 seconds).
 - **Queue dwell time**: 1 to 60 seconds (default: 5 seconds).
 - **Search Query filter**: e.g. `is:unread label:INBOX -category:promotions` (default: `is:unread label:INBOX`).
+- **Extract 2FA / OTP verification codes**: Toggle automatic scanning for verification codes and queue fast-tracking (default: enabled).
 
 ---
 
@@ -104,7 +106,7 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
 ### Entities
 1. **`sensor.gmail_latest_email`**:
    - **State**: Gmail unique `message_id` while active; `'idle'` when queue is clear.
-   - **Attributes**: `sender`, `sender_name`, `sender_email`, `subject`, `body_preview`, `received_time`, `message_id`, `unread_count`, `queue_size`, `messages` (rotating list of last 20 emails, newest first).
+   - **Attributes**: `sender`, `sender_name`, `sender_email`, `subject`, `body_preview`, `received_time`, `message_id`, `otp_code`, `unread_count`, `queue_size`, `messages` (rotating list of last 20 emails, newest first).
 2. **`sensor.gmail_unread_count`**:
    - **State**: Integer representing total unread emails matching your search query.
    - **State Class**: `measurement` (enables history graphs, gauges, and dashboard badges).
@@ -119,11 +121,11 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
    - **Action**: Triggers an immediate refresh and poll of the Gmail API without waiting for the polling timer.
 
 ### Diagnostics
-The integration supports Home Assistant's built-in **Download Diagnostics** feature (accessible under **Settings** > **Devices & Services** > **Gmail OAuth Reader**). The exported report sanitizes sensitive OAuth tokens, client secrets, and body snippets while preserving coordinator queue size, unread counts, and polling state for troubleshooting.
+The integration supports Home Assistant's built-in **Download Diagnostics** feature (accessible under **Settings** > **Devices & Services** > **Gmail OAuth Reader**). The exported report sanitizes sensitive OAuth tokens, client secrets, OTP codes, and body snippets while preserving coordinator queue size, unread counts, and polling state for troubleshooting.
 
 ### Actions (Services)
 - **`gmail_oauth_reader.get_email_content`**:
-  Fetches full metadata, plain text body, HTML body, attachments list, and all raw headers (`SupportsResponse.ONLY`).
+  Fetches full metadata, plain text body, HTML body, attachments list, `otp_code`, and all raw headers (`SupportsResponse.ONLY`).
 - **`gmail_oauth_reader.modify_email`**:
   Modifies labels on an email (e.g. `mark_as_read: true`, `archive: true`, `add_labels: ["..."]`, `remove_labels: ["..."]`).
 - **`gmail_oauth_reader.download_attachment`**:
@@ -172,4 +174,25 @@ action:
     data:
       message_id: "{{ email_data.message_id }}"
       mark_as_read: true
+```
+
+### Example 3: 2FA / OTP Verification Code Alert
+```yaml
+alias: "Gmail - 2FA / OTP Code Alert"
+trigger:
+  - platform: event
+    event_type: gmail_oauth_reader_new_email
+condition:
+  - condition: template
+    value_template: "{{ trigger.event.data.otp_code is defined and trigger.event.data.otp_code != None }}"
+action:
+  - action: persistent_notification.create
+    data:
+      title: "2FA Code: {{ trigger.event.data.otp_code }}"
+      message: >-
+        ### {{ trigger.event.data.sender }}
+        **Code:** `{{ trigger.event.data.otp_code }}`
+
+        **Subject:** {{ trigger.event.data.subject }}
+      notification_id: "gmail_otp_{{ trigger.event.data.message_id }}"
 ```

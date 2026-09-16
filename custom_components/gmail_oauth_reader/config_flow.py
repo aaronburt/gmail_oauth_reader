@@ -9,9 +9,11 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_entry_oauth2_flow
 
 from .const import (
+    CONF_EXTRACT_OTP,
     CONF_POLL_INTERVAL,
     CONF_QUERY,
     CONF_QUEUE_DWELL_TIME,
+    DEFAULT_EXTRACT_OTP,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_QUERY,
     DEFAULT_QUEUE_DWELL_TIME,
@@ -106,6 +108,12 @@ class GmailOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     CONF_QUERY,
                     default=self.options.get(CONF_QUERY, DEFAULT_QUERY),
                 ): str,
+                vol.Optional(
+                    CONF_EXTRACT_OTP,
+                    default=self.options.get(
+                        CONF_EXTRACT_OTP, DEFAULT_EXTRACT_OTP
+                    ),
+                ): bool,
             }
         )
 

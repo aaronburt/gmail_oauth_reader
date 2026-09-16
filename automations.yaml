@@ -93,3 +93,29 @@
   mode: queued
   max: 20
 
+- id: "gmail_oauth_reader_2fa_alert"
+  alias: "Gmail - 2FA / OTP Verification Code Alert"
+  description: "Dispatches a persistent notification with the verification code when an OTP email is received"
+  trigger:
+    - platform: event
+      event_type: gmail_oauth_reader_new_email
+  condition:
+    - condition: template
+      value_template: "{{ trigger.event.data.otp_code is defined and trigger.event.data.otp_code != None }}"
+  action:
+    - action: persistent_notification.create
+      data:
+        title: "2FA Code: {{ trigger.event.data.otp_code }}"
+        message: >-
+          ### Verification Code from {{ trigger.event.data.sender }}
+
+          **Code:** `{{ trigger.event.data.otp_code }}`
+
+          **Subject:** {{ trigger.event.data.subject }}
+
+          *Do not share this code.*
+        notification_id: "gmail_otp_{{ trigger.event.data.message_id }}"
+  mode: queued
+  max: 10
+
+
