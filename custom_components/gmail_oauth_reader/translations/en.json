@@ -33,12 +33,23 @@
     }
   },
   "entity": {
+    "button": {
+      "poll_now": {
+        "name": "Poll Now"
+      }
+    },
     "sensor": {
       "latest_email": {
         "name": "Latest Email"
       },
       "unread_count": {
         "name": "Unread Count"
+      },
+      "last_polled": {
+        "name": "Last Polled"
+      },
+      "queue_size": {
+        "name": "Queue Size"
       }
     }
   }

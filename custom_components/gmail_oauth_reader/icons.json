@@ -1,0 +1,34 @@
+{
+  "entity": {
+    "button": {
+      "poll_now": {
+        "default": "mdi:refresh"
+      }
+    },
+    "sensor": {
+      "latest_email": {
+        "default": "mdi:email"
+      },
+      "unread_count": {
+        "default": "mdi:email-outline"
+      },
+      "last_polled": {
+        "default": "mdi:clock-check-outline"
+      },
+      "queue_size": {
+        "default": "mdi:tray-full"
+      }
+    }
+  },
+  "services": {
+    "get_email_content": {
+      "service": "mdi:email-open"
+    },
+    "modify_email": {
+      "service": "mdi:email-edit"
+    },
+    "download_attachment": {
+      "service": "mdi:download"
+    }
+  }
+}

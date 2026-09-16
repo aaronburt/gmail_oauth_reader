@@ -161,6 +161,11 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         self._recent_emails: deque[GmailMessage] = deque(maxlen=MAX_RECENT_EMAILS)
         self._queue_task: asyncio.Task[None] | None = None
         self._unread_count: int = 0
+        self._last_polled: datetime | None = None
+
+    @property
+    def last_polled(self) -> datetime | None:
+        return self._last_polled
 
     @property
     def unread_count(self) -> int:
@@ -265,6 +270,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
 
         messages = data.get("messages", [])
         self._unread_count = len(messages)
+        self._last_polled = datetime.now(timezone.utc)
 
         if self._initial_run:
             for message_summary in messages:

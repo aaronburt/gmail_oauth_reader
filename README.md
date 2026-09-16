@@ -58,7 +58,9 @@ Copy the `custom_components/gmail_oauth_reader` directory into your Home Assista
         ├── config_flow.py
         ├── coordinator.py
         ├── sensor.py
-        ├── strings.json
+        ├── button.py
+        ├── diagnostics.py
+        ├── icons.json
         └── translations/
             └── en.json
 ```
@@ -106,6 +108,18 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
 2. **`sensor.gmail_unread_count`**:
    - **State**: Integer representing total unread emails matching your search query.
    - **State Class**: `measurement` (enables history graphs, gauges, and dashboard badges).
+3. **`sensor.gmail_last_polled`**:
+   - **State**: Timestamp of when the integration last polled the Gmail server.
+   - **Device Class**: `timestamp`
+4. **`sensor.gmail_queue_size`**:
+   - **State**: Integer count of pending emails waiting in the paced FIFO queue.
+   - **State Class**: `measurement`
+5. **`button.gmail_poll_now`**:
+   - **State**: Timestamp of last button press.
+   - **Action**: Triggers an immediate refresh and poll of the Gmail API without waiting for the polling timer.
+
+### Diagnostics
+The integration supports Home Assistant's built-in **Download Diagnostics** feature (accessible under **Settings** > **Devices & Services** > **Gmail OAuth Reader**). The exported report sanitizes sensitive OAuth tokens, client secrets, and body snippets while preserving coordinator queue size, unread counts, and polling state for troubleshooting.
 
 ### Actions (Services)
 - **`gmail_oauth_reader.get_email_content`**:

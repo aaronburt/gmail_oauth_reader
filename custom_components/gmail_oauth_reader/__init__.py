@@ -22,7 +22,7 @@ from .const import (
 )
 from .coordinator import GmailDataUpdateCoordinator
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
 
 SERVICE_GET_EMAIL_CONTENT = "get_email_content"
 SERVICE_MODIFY_EMAIL = "modify_email"

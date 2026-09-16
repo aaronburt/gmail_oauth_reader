@@ -67,3 +67,29 @@
         notification_id: "gmail_full_{{ email_content.message_id }}"
   mode: queued
   max: 20
+
+- id: "gmail_notify_from_aaronburt"
+  alias: "Gmail - Persistent Notification from Aaron Burt"
+  description: "Dispatches a persistent notification whenever an email is received from email@aaronburt.co.uk"
+  trigger:
+    - platform: event
+      event_type: gmail_oauth_reader_new_email
+  condition:
+    - condition: template
+      value_template: >-
+        {{ trigger.event.data.sender_email | lower == 'email@aaronburt.co.uk' }}
+  action:
+    - action: persistent_notification.create
+      data:
+        title: "Email from {{ trigger.event.data.sender_name or trigger.event.data.sender_email }}"
+        message: >-
+          ### {{ trigger.event.data.subject }}
+
+          {{ trigger.event.data.body_preview }}
+
+          ---
+          *Received at: {{ trigger.event.data.received_time }}*
+        notification_id: "gmail_from_aaron_{{ trigger.event.data.message_id }}"
+  mode: queued
+  max: 20
+

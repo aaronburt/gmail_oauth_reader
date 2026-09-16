@@ -1,7 +1,12 @@
 from dataclasses import asdict
+from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -22,6 +27,8 @@ async def async_setup_entry(
         [
             GmailLatestEmailSensor(coordinator, entry),
             GmailUnreadCountSensor(coordinator, entry),
+            GmailLastPolledSensor(coordinator, entry),
+            GmailQueueSizeSensor(coordinator, entry),
         ]
     )
 
@@ -72,7 +79,6 @@ class GmailUnreadCountSensor(
     _attr_has_entity_name = True
     _attr_translation_key = "unread_count"
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_icon = "mdi:email-outline"
 
     def __init__(
         self,
@@ -91,3 +97,56 @@ class GmailUnreadCountSensor(
     @property
     def native_value(self) -> int:
         return self.coordinator.unread_count
+
+
+class GmailLastPolledSensor(
+    CoordinatorEntity[GmailDataUpdateCoordinator], SensorEntity
+):
+    _attr_has_entity_name = True
+    _attr_translation_key = "last_polled"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(
+        self,
+        coordinator: GmailDataUpdateCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.unique_id}_last_polled"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.unique_id))},
+            name=f"Gmail ({entry.title})",
+            manufacturer="Google",
+            model="Gmail API",
+        )
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.coordinator.last_polled
+
+
+class GmailQueueSizeSensor(
+    CoordinatorEntity[GmailDataUpdateCoordinator], SensorEntity
+):
+    _attr_has_entity_name = True
+    _attr_translation_key = "queue_size"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        coordinator: GmailDataUpdateCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.unique_id}_queue_size"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(entry.unique_id))},
+            name=f"Gmail ({entry.title})",
+            manufacturer="Google",
+            model="Gmail API",
+        )
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.queue_size
+
