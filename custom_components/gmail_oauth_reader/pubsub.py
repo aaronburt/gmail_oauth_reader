@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import logging
 from typing import Any
 
@@ -133,8 +133,19 @@ class GmailWatchManager:
             while True:
                 sleep_seconds = WATCH_RENEWAL_DAYS * 86400
                 await asyncio.sleep(sleep_seconds)
-                _LOGGER.debug("Renewing Gmail watch for topic %s", topic_path)
-                await self._async_call_watch_api(topic_path)
+                retry_delay = 60
+                while True:
+                    _LOGGER.debug("Renewing Gmail watch for topic %s", topic_path)
+                    success = await self._async_call_watch_api(topic_path)
+                    if success:
+                        break
+                    _LOGGER.warning(
+                        "Watch renewal failed for topic %s, retrying in %ds",
+                        topic_path,
+                        retry_delay,
+                    )
+                    await asyncio.sleep(retry_delay)
+                    retry_delay = min(retry_delay * 2, 3600)
         except asyncio.CancelledError:
             pass
 
@@ -201,7 +212,7 @@ class PubSubPullListener:
                             )
                         await on_notification()
                     else:
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(5)
                 elif resp.status in (401, 403):
                     _LOGGER.error(
                         "Pub/Sub pull authorization error %s. Pausing pull listener.",

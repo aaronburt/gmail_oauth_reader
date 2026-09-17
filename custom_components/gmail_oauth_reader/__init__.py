@@ -1,7 +1,6 @@
 from datetime import timedelta
 from pathlib import Path
 
-import aiohttp
 from aiohttp import web
 import voluptuous as vol
 
@@ -19,7 +18,6 @@ from homeassistant.helpers import config_entry_oauth2_flow, config_validation as
 
 from .const import (
     CONF_POLL_INTERVAL,
-    CONF_UPDATE_MODE,
     CONF_WEBHOOK_ID,
     DEFAULT_DOWNLOAD_DIR,
     DEFAULT_POLL_INTERVAL,
@@ -188,10 +186,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         msg_id = call.data["message_id"]
         att_id = call.data["attachment_id"]
         filename = Path(call.data["filename"]).name
-        target_path = Path(
-            call.data.get("path") or hass.config.path(DEFAULT_DOWNLOAD_DIR),
-            filename,
+        target_dir = Path(
+            call.data.get("path") or hass.config.path(DEFAULT_DOWNLOAD_DIR)
         )
+        target_path = target_dir / filename
+        if not hass.config.is_allowed_path(str(target_path)):
+            raise HomeAssistantError(
+                f"Access to destination path '{target_path}' is forbidden"
+            )
 
         content = await active_coordinator.async_download_attachment(msg_id, att_id)
 

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Mapping
 import logging
 from typing import Any, cast
@@ -145,10 +146,11 @@ class GmailOAuthFlowHandler(
 
         session = config_entry_oauth2_flow.async_get_clientsession(self.hass)
         try:
-            async with session.get(GMAIL_PROFILE_URL, headers=headers) as resp:
-                if resp.status == 200:
-                    profile = await resp.json()
-                    email_address = profile.get("emailAddress", "Gmail Account")
+            async with asyncio.timeout(10):
+                async with session.get(GMAIL_PROFILE_URL, headers=headers) as resp:
+                    if resp.status == 200:
+                        profile = await resp.json()
+                        email_address = profile.get("emailAddress", "Gmail Account")
         except Exception:
             pass
 

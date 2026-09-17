@@ -47,7 +47,6 @@ from .const import (
     MAX_BODY_PREVIEW_LENGTH,
     MAX_RECENT_EMAILS,
     MAX_SEEN_CACHE_SIZE,
-    MODE_POLLING,
     MODE_PUBSUB_PULL,
     MODE_PUBSUB_PUSH,
 )
@@ -413,6 +412,18 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
             otp_code=otp_code,
         )
 
+    async def _fetch_messages_bounded(
+        self, message_ids: list[str]
+    ) -> list[GmailMessage]:
+        semaphore = asyncio.Semaphore(5)
+
+        async def _fetch(msg_id: str) -> GmailMessage | None:
+            async with semaphore:
+                return await self._fetch_message_details(msg_id)
+
+        results = await asyncio.gather(*(_fetch(mid) for mid in message_ids))
+        return [msg for msg in results if msg is not None]
+
     async def _async_update_data(self) -> GmailMessage | None:
         query = self._entry.options.get(CONF_QUERY, DEFAULT_QUERY)
         params = {"q": query, "maxResults": "20"}
@@ -446,22 +457,25 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         if self._initial_run:
             for message_summary in messages:
                 self._record_seen(message_summary["id"])
-            for message_summary in reversed(messages[:MAX_RECENT_EMAILS]):
-                details = await self._fetch_message_details(message_summary["id"])
-                if details is not None:
-                    self._recent_emails.append(details)
-                    self._last_message = details
+            initial_ids = [
+                m["id"] for m in reversed(messages[:MAX_RECENT_EMAILS])
+            ]
+            initial_details = await self._fetch_messages_bounded(initial_ids)
+            for details in initial_details:
+                self._recent_emails.append(details)
+                self._last_message = details
             self._initial_run = False
             return self._active_message
 
-        new_messages: list[GmailMessage] = []
-        for message_summary in reversed(messages):
-            message_id = message_summary["id"]
-            if message_id not in self._seen_message_ids:
-                self._record_seen(message_id)
-                details = await self._fetch_message_details(message_id)
-                if details is not None:
-                    new_messages.append(details)
+        new_message_ids = [
+            m["id"]
+            for m in reversed(messages)
+            if m["id"] not in self._seen_message_ids
+        ]
+        for msg_id in new_message_ids:
+            self._record_seen(msg_id)
+
+        new_messages = await self._fetch_messages_bounded(new_message_ids)
 
         extract_otp = self._entry.options.get(
             CONF_EXTRACT_OTP, DEFAULT_EXTRACT_OTP
@@ -705,6 +719,10 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
 
         if attachments:
             for file_path_str in attachments:
+                if not self.hass.config.is_allowed_path(file_path_str):
+                    raise HomeAssistantError(
+                        f"Access to file path '{file_path_str}' is forbidden"
+                    )
                 file_path = Path(file_path_str)
                 if not file_path.is_file():
                     raise HomeAssistantError(
