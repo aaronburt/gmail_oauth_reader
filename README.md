@@ -57,6 +57,8 @@ Copy the `custom_components/gmail_oauth_reader` directory into your Home Assista
 ├── blueprints/
 │   └── automation/
 │       └── gmail_otp_actionable.yaml
+├── lovelace/
+│   └── gmail_inbox_card.yaml
 └── custom_components/
     └── gmail_oauth_reader/
         ├── __init__.py
@@ -64,8 +66,10 @@ Copy the `custom_components/gmail_oauth_reader` directory into your Home Assista
         ├── const.py
         ├── config_flow.py
         ├── coordinator.py
+        ├── device_trigger.py
         ├── pubsub.py
         ├── otp.py
+        ├── repairs.py
         ├── sensor.py
         ├── button.py
         ├── diagnostics.py
@@ -173,6 +177,9 @@ Access the integration's **Configure** button under **Settings** > **Devices & S
 6. **`button.gmail_poll_now`**:
    - **State**: Timestamp of last button press.
    - **Action**: Triggers an immediate refresh and poll of the Gmail API without waiting for the polling timer.
+7. **`button.gmail_simulate_test_email`**:
+   - **State**: Timestamp of last button press.
+   - **Action**: Injects a simulated test email with a randomized 6-digit 2FA/OTP code into the FIFO queue for instant automation and dashboard testing.
 
 ### Diagnostics
 The integration supports Home Assistant's built-in **Download Diagnostics** feature (accessible under **Settings** > **Devices & Services** > **Gmail OAuth Reader**). The exported report sanitizes sensitive OAuth tokens, client secrets, OTP codes, and body snippets while preserving coordinator queue size, unread counts, and polling state for troubleshooting.
@@ -186,6 +193,8 @@ The integration supports Home Assistant's built-in **Download Diagnostics** feat
   Downloads an attachment to Home Assistant storage (default: `www/gmail_attachments/<filename>`).
 - **`gmail_oauth_reader.send_email`**:
   Sends an outbound email via the Gmail REST API (`SupportsResponse.OPTIONAL`). Supports plain text, HTML, CC, BCC, Reply-To, and local file attachments. Requires write access scope (`https://www.googleapis.com/auth/gmail.send`) enabled by the user. Returns `message_id` and `thread_id`.
+- **`gmail_oauth_reader.simulate_email`**:
+  Injects a simulated email or 2FA/OTP code into the queue pipeline (`SupportsResponse.OPTIONAL`). Supports custom `sender`, `subject`, `body`, and `otp_code`. Secondary actions (`get_email_content`, `modify_email`) automatically mock responses for simulated messages without making external API calls to Google. Returns `message_id`.
 
 ---
 
@@ -278,6 +287,41 @@ action:
         - "/config/www/security_alert.jpg"
 ```
 
+### Example 5: Visual Automation UI Device Triggers
+You can build automations without YAML templates using Home Assistant's visual Automation Builder:
+- Select **Device** as the trigger.
+- Choose your **Gmail (your_email@gmail.com)** device.
+- Select either **New email received** or **New 2FA / OTP verification code received**.
+
+```yaml
+alias: "Gmail - UI Device Trigger Notification"
+trigger:
+  - platform: device
+    domain: gmail_oauth_reader
+    device_id: YOUR_GMAIL_DEVICE_ID
+    type: new_email
+action:
+  - action: persistent_notification.create
+    data:
+      title: "Email from {{ trigger.event.data.sender }}"
+      message: "{{ trigger.event.data.body_preview }}"
+```
+
+### Example 6: Testing Automations with the Email Simulator
+You can test automations, blueprints, or dashboards without waiting for real emails:
+
+```yaml
+# Trigger via Developer Tools > Actions, automation, or script
+action: gmail_oauth_reader.simulate_email
+data:
+  sender: "GitHub <support@github.com>"
+  subject: "Your GitHub verification code is 492019"
+  body: "Use verification code 492019 to complete sign in."
+  otp_code: "492019"
+```
+
+Alternatively, tap **`button.gmail_simulate_test_email`** directly from your dashboard or Developer Tools to inject a realistic test email with a freshly randomized 6-digit verification code.
+
 ---
 
 ## 7. Actionable Notification Blueprint
@@ -296,3 +340,31 @@ The repository includes a ready-to-use Home Assistant blueprint: [`blueprints/au
 2. In Home Assistant, navigate to **Settings** > **Automations & Scenes** > **Blueprints**.
 3. Locate **Gmail 2FA / OTP Actionable Notification** and click **Create Automation**.
 4. Select your **OTP Sensor** (`sensor.gmail_latest_otp`) and target **Device to Notify**.
+
+---
+
+## 8. Lovelace Inbox Dashboard
+
+The repository provides an out-of-the-box, zero-dependency Lovelace dashboard card stack: [`lovelace/gmail_inbox_card.yaml`](lovelace/gmail_inbox_card.yaml).
+
+### Features
+- **Quick Status Header**: Live unread count tile, queue processing size tile, and a 1-tap **Poll Now** button.
+- **Dynamic 2FA / OTP Banner**: Appears only when an active verification code is received, showing the code in prominent monospace, sender, service name, expiry timestamp, and a 1-click **Mark Verification as Read** button.
+- **Active Queue Inspector**: Displays email metadata and body preview in real time while an email is progressing through the dwell queue.
+- **Recent Emails Feed**: Formatted list of the latest 10 processed emails showing sender, timestamp, subject, body preview, and highlighted 2FA badges.
+
+### Setup Instructions
+1. Open your Home Assistant Dashboard.
+2. Click the three dots in the top-right corner and select **Edit Dashboard**.
+3. Click **Add Card** and scroll down to select **Manual**.
+4. Copy and paste the contents of [`lovelace/gmail_inbox_card.yaml`](lovelace/gmail_inbox_card.yaml) into the code editor.
+5. Click **Save**.
+
+---
+
+## 9. Native Home Assistant Repairs
+
+The integration natively hooks into Home Assistant's Repairs dashboard (**Settings** > **System** > **Repairs**) to monitor authentication health:
+- **Proactive Expiration Detection**: If Google returns an authentication error (HTTP 400/401 or `ConfigEntryAuthFailed` — common when GCP projects are in "Testing" mode with 7-day token expirations), a repair issue is raised automatically.
+- **One-Click Re-authentication**: Clicking **Submit** on the repair issue directly initiates Home Assistant's native OAuth re-authentication dialog without requiring navigation through settings menus.
+- **Automated Dismissal**: Once re-authentication completes and the next Gmail API request succeeds, the repair issue is automatically cleared from the dashboard.

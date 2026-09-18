@@ -3,3 +3,8 @@ __pycache__/
 *$py.class
 .DS_Store
 Thumbs.db
+
+dev_config/
+.pytest_cache/
+.coverage
+htmlcov/

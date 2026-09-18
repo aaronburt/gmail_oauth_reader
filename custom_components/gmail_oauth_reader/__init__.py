@@ -24,14 +24,26 @@ from .const import (
     DOMAIN,
     MODE_PUBSUB_PUSH,
     SERVICE_SEND_EMAIL,
+    SERVICE_SIMULATE_EMAIL,
 )
 from .coordinator import GmailDataUpdateCoordinator
+from .repairs import async_create_issue, async_delete_issue
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
 
 SERVICE_GET_EMAIL_CONTENT = "get_email_content"
 SERVICE_MODIFY_EMAIL = "modify_email"
 SERVICE_DOWNLOAD_ATTACHMENT = "download_attachment"
+
+SCHEMA_SIMULATE_EMAIL = vol.Schema(
+    {
+        vol.Optional("sender"): cv.string,
+        vol.Optional("subject"): cv.string,
+        vol.Optional("body"): cv.string,
+        vol.Optional("otp_code"): cv.string,
+        vol.Optional("entry_id"): cv.string,
+    }
+)
 
 SCHEMA_GET_EMAIL_CONTENT = vol.Schema(
     {
@@ -117,10 +129,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = config_entry_oauth2_flow.OAuth2Session(
         hass, entry, implementation
     )
-    try:
-        await session.async_ensure_token_valid()
-    except Exception as err:
-        raise ConfigEntryAuthFailed(f"OAuth token is invalid: {err}") from err
+    if not entry.data.get("simulated"):
+        try:
+            await session.async_ensure_token_valid()
+        except Exception as err:
+            async_create_issue(hass, entry)
+            raise ConfigEntryAuthFailed(f"OAuth token is invalid: {err}") from err
 
     poll_interval = entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
     coordinator = GmailDataUpdateCoordinator(
@@ -130,7 +144,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         update_interval=timedelta(seconds=poll_interval),
     )
 
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except ConfigEntryAuthFailed:
+        async_create_issue(hass, entry)
+        raise
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
@@ -258,6 +276,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
+    async def handle_simulate_email(call: ServiceCall) -> ServiceResponse:
+        active_coordinator = get_coordinator(call.data.get("entry_id"))
+        simulated_id = await active_coordinator.async_simulate_email(
+            sender=call.data.get("sender"),
+            subject=call.data.get("subject"),
+            body=call.data.get("body"),
+            otp_code=call.data.get("otp_code"),
+        )
+        return {"message_id": simulated_id}
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SIMULATE_EMAIL):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SIMULATE_EMAIL,
+            handle_simulate_email,
+            schema=SCHEMA_SIMULATE_EMAIL,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -267,6 +304,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
+        async_delete_issue(hass, entry.entry_id)
         async_unregister_push_webhook(hass, entry)
         coordinator: GmailDataUpdateCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
         coordinator.cancel_queue_task()
@@ -277,6 +315,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_MODIFY_EMAIL,
                 SERVICE_DOWNLOAD_ATTACHMENT,
                 SERVICE_SEND_EMAIL,
+                SERVICE_SIMULATE_EMAIL,
             ):
                 if hass.services.has_service(DOMAIN, service_name):
                     hass.services.async_remove(DOMAIN, service_name)

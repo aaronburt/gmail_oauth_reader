@@ -150,3 +150,38 @@ send_email:
       description: Optional configuration entry ID if multiple Gmail accounts are configured.
       selector:
         text:
+
+simulate_email:
+  name: Simulate Test Email
+  description: Injects a simulated incoming email or 2FA/OTP code into the queue pipeline for automation and blueprint testing.
+  fields:
+    sender:
+      name: Sender
+      description: Custom sender address or name. Defaults to Home Assistant Simulator <simulator@homeassistant.local>.
+      example: "GitHub <support@github.com>"
+      selector:
+        text:
+    subject:
+      name: Subject
+      description: Custom email subject. Defaults to an OTP verification subject.
+      example: "Your verification code is 492019"
+      selector:
+        text:
+    body:
+      name: Body
+      description: Plain-text body content of the simulated email.
+      example: "Use 492019 to verify your account."
+      selector:
+        text:
+          multiline: true
+    otp_code:
+      name: 2FA / OTP Code
+      description: Specific verification code to simulate. If omitted, a randomized 6-digit code is automatically generated.
+      example: "492019"
+      selector:
+        text:
+    entry_id:
+      name: Config Entry ID
+      description: Optional configuration entry ID if multiple Gmail accounts are configured.
+      selector:
+        text:

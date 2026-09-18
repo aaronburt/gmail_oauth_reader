@@ -55,6 +55,9 @@
     "button": {
       "poll_now": {
         "name": "Poll Now"
+      },
+      "simulate_test_email": {
+        "name": "Simulate Test Email"
       }
     },
     "sensor": {
@@ -72,6 +75,26 @@
       },
       "queue_size": {
         "name": "Queue Size"
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "new_email": "New email received",
+      "new_otp": "New 2FA / OTP verification code received"
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Gmail authentication expired for {account}",
+      "description": "The Google OAuth refresh token for {account} has expired or was revoked. This commonly occurs when your Google Cloud project is in 'Testing' mode (where refresh tokens expire after 7 days) or if credentials were changed.\n\nSelect **Submit** to launch Google OAuth re-authentication.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Re-authenticate Gmail Account",
+            "description": "Select **Submit** to launch Google OAuth re-authentication for {account}."
+          }
+        }
       }
     }
   }

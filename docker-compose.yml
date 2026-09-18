@@ -1,0 +1,13 @@
+services:
+  homeassistant:
+    container_name: ha-dev
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - ./dev_config:/config
+      - ./custom_components:/config/custom_components:ro
+      - ./lovelace:/config/lovelace:ro
+    ports:
+      - "8123:8123"
+    environment:
+      - TZ=UTC
+    restart: unless-stopped

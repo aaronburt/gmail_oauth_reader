@@ -13,7 +13,6 @@ SCOPE_GMAIL_SEND: Final = "https://www.googleapis.com/auth/gmail.send"
 
 SCOPES: Final = [
     "https://www.googleapis.com/auth/gmail.modify",
-    "https://www.googleapis.com/auth/pubsub",
 ]
 
 MODE_POLLING: Final = "polling"
@@ -67,3 +66,11 @@ STATE_IDLE: Final = "idle"
 MAX_SEEN_CACHE_SIZE: Final = 500
 MAX_BODY_PREVIEW_LENGTH: Final = 200
 MAX_RECENT_EMAILS: Final = 20
+
+EVENT_GMAIL_NEW_EMAIL: Final = "gmail_oauth_reader_new_email"
+EVENT_GMAIL_NEW_OTP: Final = "gmail_oauth_reader_new_otp"
+TRIGGER_TYPE_NEW_EMAIL: Final = "new_email"
+TRIGGER_TYPE_NEW_OTP: Final = "new_otp"
+
+SERVICE_SIMULATE_EMAIL: Final = "simulate_email"
+SIMULATED_MESSAGE_PREFIX: Final = "sim_"

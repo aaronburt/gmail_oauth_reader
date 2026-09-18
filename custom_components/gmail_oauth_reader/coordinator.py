@@ -10,7 +10,9 @@ import html
 import logging
 import mimetypes
 from pathlib import Path
+import random
 import re
+import secrets
 from typing import Any
 
 import aiohttp
@@ -42,6 +44,8 @@ from .const import (
     DEFAULT_SAFETY_POLL_INTERVAL,
     DEFAULT_UPDATE_MODE,
     DOMAIN,
+    EVENT_GMAIL_NEW_EMAIL,
+    EVENT_GMAIL_NEW_OTP,
     GMAIL_MESSAGES_URL,
     GMAIL_SEND_URL,
     MAX_BODY_PREVIEW_LENGTH,
@@ -49,6 +53,7 @@ from .const import (
     MAX_SEEN_CACHE_SIZE,
     MODE_PUBSUB_PULL,
     MODE_PUBSUB_PUSH,
+    SIMULATED_MESSAGE_PREFIX,
 )
 from .otp import extract_otp_code
 from .pubsub import (
@@ -57,6 +62,7 @@ from .pubsub import (
     format_subscription_path,
     format_topic_path,
 )
+from .repairs import async_create_issue, async_delete_issue
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -218,6 +224,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         self._watch_manager: GmailWatchManager = GmailWatchManager(hass, session)
         self._pull_listener: PubSubPullListener = PubSubPullListener(hass, session)
         self._debounce_task: asyncio.Task[None] | None = None
+        self._simulated_messages: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
     @property
     def update_mode(self) -> str:
@@ -355,6 +362,10 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         if len(self._seen_message_ids) > MAX_SEEN_CACHE_SIZE:
             self._seen_message_ids.popitem(last=False)
 
+    def _handle_auth_failure(self, error_message: str) -> None:
+        async_create_issue(self.hass, self._entry)
+        raise ConfigEntryAuthFailed(error_message)
+
     async def _fetch_message_details(self, message_id: str) -> GmailMessage | None:
         url = f"{GMAIL_MESSAGES_URL}/{message_id}"
         params = {
@@ -365,7 +376,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
             async with asyncio.timeout(10):
                 resp = await self._session.async_request("GET", url, params=params)
                 if resp.status in (400, 401):
-                    raise ConfigEntryAuthFailed(
+                    self._handle_auth_failure(
                         f"Authentication failed fetching message {message_id}: {resp.status}"
                     )
                 if resp.status in (429, 503):
@@ -425,6 +436,10 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         return [msg for msg in results if msg is not None]
 
     async def _async_update_data(self) -> GmailMessage | None:
+        if self._entry.data.get("simulated"):
+            self._last_polled = datetime.now(timezone.utc)
+            return self._active_message
+
         query = self._entry.options.get(CONF_QUERY, DEFAULT_QUERY)
         params = {"q": query, "maxResults": "20"}
         try:
@@ -433,7 +448,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
                     "GET", GMAIL_MESSAGES_URL, params=params
                 )
                 if resp.status in (400, 401):
-                    raise ConfigEntryAuthFailed(
+                    self._handle_auth_failure(
                         f"Authentication failed querying messages: {resp.status}"
                     )
                 if resp.status in (429, 503):
@@ -445,11 +460,15 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
                         f"Unexpected response querying messages: {resp.status}"
                     )
                 data = await resp.json()
+        except ConfigEntryAuthFailed:
+            async_create_issue(self.hass, self._entry)
+            raise
         except TimeoutError as err:
             raise UpdateFailed(f"Timeout querying messages: {err}") from err
         except aiohttp.ClientError as err:
             raise UpdateFailed(f"Network error querying messages: {err}") from err
 
+        async_delete_issue(self.hass, self._entry.entry_id)
         messages = data.get("messages", [])
         self._unread_count = len(messages)
         self._last_polled = datetime.now(timezone.utc)
@@ -511,11 +530,15 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
                 self._active_message = self._queue.popleft()
                 self._last_message = self._active_message
                 self._recent_emails.append(self._active_message)
-                if self._active_message.otp_code is not None:
+                if self._active_message.otp_code:
                     self._set_latest_otp(self._active_message)
-                self.hass.bus.async_fire(
-                    "gmail_oauth_reader_new_email", asdict(self._active_message)
-                )
+                event_payload = {
+                    **asdict(self._active_message),
+                    "entry_id": self._entry.entry_id,
+                }
+                self.hass.bus.async_fire(EVENT_GMAIL_NEW_EMAIL, event_payload)
+                if self._active_message.otp_code:
+                    self.hass.bus.async_fire(EVENT_GMAIL_NEW_OTP, event_payload)
                 self.async_set_updated_data(self._active_message)
                 await asyncio.sleep(dwell_time)
         finally:
@@ -544,14 +567,106 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         except asyncio.CancelledError:
             pass
 
+    async def async_simulate_email(
+        self,
+        sender: str | None = None,
+        subject: str | None = None,
+        body: str | None = None,
+        otp_code: str | None = None,
+    ) -> str:
+        resolved_otp = (
+            otp_code if otp_code is not None else f"{random.randint(100000, 999999)}"
+        )
+        resolved_sender = (
+            sender or "Home Assistant Simulator <simulator@homeassistant.local>"
+        )
+        resolved_subject = (
+            subject or f"Your verification code is {resolved_otp}"
+        )
+        resolved_body = (
+            body or f"Use the code {resolved_otp} to verify your sign-in. Do not share this code."
+        )
+
+        message_id = f"{SIMULATED_MESSAGE_PREFIX}{secrets.token_hex(4)}"
+        received_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        display_sender, sender_name, sender_email = parse_sender_components(resolved_sender)
+
+        self._simulated_messages[message_id] = {
+            "message_id": message_id,
+            "thread_id": f"thread_{message_id}",
+            "sender": display_sender,
+            "sender_name": sender_name,
+            "sender_email": sender_email,
+            "to": self._entry.title,
+            "cc": "",
+            "bcc": "",
+            "subject": resolved_subject,
+            "date": received_time,
+            "labels": ["UNREAD", "INBOX", "SIMULATED"],
+            "snippet": resolved_body[:MAX_BODY_PREVIEW_LENGTH],
+            "text_body": resolved_body,
+            "html_body": f"<p>{html.escape(resolved_body)}</p>",
+            "otp_code": resolved_otp,
+            "attachments": [],
+            "headers": {"from": resolved_sender, "subject": resolved_subject},
+        }
+        if len(self._simulated_messages) > 50:
+            self._simulated_messages.popitem(last=False)
+
+        simulated_message = GmailMessage(
+            message_id=message_id,
+            sender=display_sender,
+            sender_name=sender_name,
+            sender_email=sender_email,
+            subject=resolved_subject,
+            body_preview=resolved_body[:MAX_BODY_PREVIEW_LENGTH],
+            received_time=received_time,
+            otp_code=resolved_otp,
+        )
+
+        if resolved_otp:
+            self._queue.appendleft(simulated_message)
+        else:
+            self._queue.append(simulated_message)
+
+        if self._queue_task is None or self._queue_task.done():
+            self._queue_task = self.hass.async_create_background_task(
+                self._process_queue(), "gmail_queue_processor"
+            )
+
+        return message_id
+
     async def async_get_full_email(self, message_id: str) -> dict[str, Any]:
+        if message_id.startswith(SIMULATED_MESSAGE_PREFIX):
+            if message_id in self._simulated_messages:
+                return dict(self._simulated_messages[message_id])
+            return {
+                "message_id": message_id,
+                "thread_id": f"thread_{message_id}",
+                "sender": "Home Assistant Simulator <simulator@homeassistant.local>",
+                "sender_name": "Home Assistant Simulator",
+                "sender_email": "simulator@homeassistant.local",
+                "to": self._entry.title,
+                "cc": "",
+                "bcc": "",
+                "subject": "Simulated Test Email",
+                "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                "labels": ["UNREAD", "INBOX", "SIMULATED"],
+                "snippet": "Simulated email payload for testing.",
+                "text_body": "Simulated email payload for testing.",
+                "html_body": "<p>Simulated email payload for testing.</p>",
+                "otp_code": None,
+                "attachments": [],
+                "headers": {"from": "simulator@homeassistant.local", "subject": "Simulated Test Email"},
+            }
+
         url = f"{GMAIL_MESSAGES_URL}/{message_id}"
         params = {"format": "full"}
         try:
             async with asyncio.timeout(15):
                 resp = await self._session.async_request("GET", url, params=params)
                 if resp.status in (400, 401):
-                    raise ConfigEntryAuthFailed(
+                    self._handle_auth_failure(
                         f"Authentication failed fetching full email {message_id}: {resp.status}"
                     )
                 if resp.status != 200:
@@ -617,6 +732,12 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         add_labels: list[str] | None = None,
         remove_labels: list[str] | None = None,
     ) -> dict[str, Any]:
+        if message_id.startswith(SIMULATED_MESSAGE_PREFIX):
+            return {
+                "message_id": message_id,
+                "labels": ["SIMULATED"],
+            }
+
         url = f"{GMAIL_MESSAGES_URL}/{message_id}/modify"
         payload = {
             "addLabelIds": add_labels or [],
@@ -626,7 +747,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
             async with asyncio.timeout(10):
                 resp = await self._session.async_request("POST", url, json=payload)
                 if resp.status in (400, 401):
-                    raise ConfigEntryAuthFailed(
+                    self._handle_auth_failure(
                         f"Authentication failed modifying email {message_id}: {resp.status}"
                     )
                 if resp.status != 200:
@@ -656,7 +777,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
             async with asyncio.timeout(15):
                 resp = await self._session.async_request("GET", url)
                 if resp.status in (400, 401):
-                    raise ConfigEntryAuthFailed(
+                    self._handle_auth_failure(
                         f"Authentication failed downloading attachment: {resp.status}"
                     )
                 if resp.status != 200:

@@ -1,0 +1,104 @@
+type: vertical-stack
+title: Gmail Inbox
+cards:
+  - type: horizontal-stack
+    cards:
+      - type: tile
+        entity: sensor.gmail_unread_count
+        name: Unread
+        icon: mdi:email-mark-as-unread
+        color: blue
+      - type: tile
+        entity: sensor.gmail_queue_size
+        name: Queue
+        icon: mdi:tray-full
+        color: amber
+      - type: tile
+        entity: button.gmail_poll_now
+        name: Poll Now
+        icon: mdi:sync
+      - type: tile
+        entity: button.gmail_simulate_test_email
+        name: Test
+        icon: mdi:email-fast-outline
+
+  - type: conditional
+    conditions:
+      - condition: state
+        entity: sensor.gmail_latest_otp
+        state_not: idle
+      - condition: state
+        entity: sensor.gmail_latest_otp
+        state_not: unavailable
+      - condition: state
+        entity: sensor.gmail_latest_otp
+        state_not: unknown
+    card:
+      type: vertical-stack
+      cards:
+        - type: markdown
+          title: Active 2FA / OTP Code
+          content: >-
+            # `{{ states('sensor.gmail_latest_otp') }}`
+
+            **Service:** {{ state_attr('sensor.gmail_latest_otp', 'service_name') | default('Verification', true) }}
+
+            **Sender:** {{ state_attr('sensor.gmail_latest_otp', 'sender_name') or state_attr('sensor.gmail_latest_otp', 'sender_email') }}
+
+            **Subject:** {{ state_attr('sensor.gmail_latest_otp', 'subject') }}
+
+            *Expires at: {{ state_attr('sensor.gmail_latest_otp', 'expires_at') }}*
+        - type: horizontal-stack
+          cards:
+            - type: button
+              name: Mark Verification as Read
+              icon: mdi:email-check-outline
+              tap_action:
+                action: call-service
+                service: gmail_oauth_reader.modify_email
+                data:
+                  message_id: "{{ state_attr('sensor.gmail_latest_otp', 'message_id') }}"
+                  mark_as_read: true
+
+  - type: conditional
+    conditions:
+      - condition: state
+        entity: sensor.gmail_latest_email
+        state_not: idle
+      - condition: state
+        entity: sensor.gmail_latest_email
+        state_not: unavailable
+      - condition: state
+        entity: sensor.gmail_latest_email
+        state_not: unknown
+    card:
+      type: markdown
+      title: Processing Email in Queue
+      content: >-
+        **From:** {{ state_attr('sensor.gmail_latest_email', 'sender') }}
+
+        **Subject:** {{ state_attr('sensor.gmail_latest_email', 'subject') }}
+
+        {{ state_attr('sensor.gmail_latest_email', 'body_preview') }}
+
+  - type: markdown
+    title: Recent Emails
+    content: >-
+      {% set msgs = state_attr('sensor.gmail_latest_email', 'messages') %}
+      {% if msgs and msgs | length > 0 %}
+        {% for msg in msgs[:10] %}
+      **{{ msg.sender_name or msg.sender_email }}** &bull; *{{ msg.received_time }}*
+
+      **{{ msg.subject }}**
+
+      {{ msg.body_preview }}
+
+      {% if msg.otp_code %}
+      > 🔐 **2FA Code:** `{{ msg.otp_code }}`
+      {% endif %}
+
+      ---
+        {% endfor %}
+      {% else %}
+      *No emails processed yet this session.*
+      {% endif %}

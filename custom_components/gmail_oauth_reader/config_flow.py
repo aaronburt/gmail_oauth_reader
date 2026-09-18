@@ -9,7 +9,7 @@ from homeassistant.components import webhook
 from homeassistant.config_entries import (
     SOURCE_REAUTH,
     ConfigEntry,
-    OptionsFlowWithConfigEntry,
+    OptionsFlow,
 )
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
@@ -58,6 +58,7 @@ from .const import (
     SCOPE_GMAIL_SEND,
     SCOPES,
 )
+from .repairs import async_delete_issue
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -162,6 +163,7 @@ class GmailOAuthFlowHandler(
                 reason="wrong_account",
                 description_placeholders={"email": cast(str, reauth_entry.unique_id)},
             )
+            async_delete_issue(self.hass, reauth_entry.entry_id)
             data[CONF_ENABLE_WRITE] = self._enable_write
             new_options = dict(reauth_entry.options)
             new_options[CONF_ENABLE_WRITE] = self._enable_write
@@ -182,11 +184,15 @@ class GmailOAuthFlowHandler(
     @callback
     def async_get_options_flow(
         config_entry: ConfigEntry,
-    ) -> OptionsFlowWithConfigEntry:
-        return GmailOptionsFlowHandler(config_entry)
+    ) -> OptionsFlow:
+        return GmailOptionsFlowHandler()
 
 
-class GmailOptionsFlowHandler(OptionsFlowWithConfigEntry):
+class GmailOptionsFlowHandler(OptionsFlow):
+    @property
+    def options(self) -> dict[str, Any]:
+        return dict(self.config_entry.options)
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:

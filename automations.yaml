@@ -118,4 +118,44 @@
   mode: queued
   max: 10
 
+- id: "gmail_oauth_reader_device_trigger_example"
+  alias: "Gmail - UI Device Trigger Example"
+  description: "Triggered natively using the Home Assistant Device Automation UI when a new email arrives"
+  trigger:
+    - platform: device
+      domain: gmail_oauth_reader
+      device_id: YOUR_GMAIL_DEVICE_ID
+      type: new_email
+  action:
+    - action: persistent_notification.create
+      data:
+        title: "Device Trigger: Email from {{ trigger.event.data.sender }}"
+        message: >-
+          **Subject:** {{ trigger.event.data.subject }}
+
+          {{ trigger.event.data.body_preview }}
+        notification_id: "gmail_device_{{ trigger.event.data.message_id }}"
+  mode: queued
+  max: 20
+
+- id: "gmail_oauth_reader_device_otp_trigger_example"
+  alias: "Gmail - UI Device Trigger OTP Example"
+  description: "Triggered natively using the Home Assistant Device Automation UI when a new 2FA code arrives"
+  trigger:
+    - platform: device
+      domain: gmail_oauth_reader
+      device_id: YOUR_GMAIL_DEVICE_ID
+      type: new_otp
+  action:
+    - action: persistent_notification.create
+      data:
+        title: "Device Trigger OTP: {{ trigger.event.data.otp_code }}"
+        message: >-
+          **Code:** `{{ trigger.event.data.otp_code }}`
+
+          **From:** {{ trigger.event.data.sender }}
+        notification_id: "gmail_device_otp_{{ trigger.event.data.message_id }}"
+  mode: queued
+  max: 10
+
 
