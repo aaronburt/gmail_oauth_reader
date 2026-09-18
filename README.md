@@ -1,93 +1,78 @@
-# 📬 Gmail OAuth Reader for Home Assistant
+# Gmail OAuth Reader for Home Assistant
 
-Read emails, extract delivery PINs & 2FA codes, and trigger smart home automations directly from your Gmail account — with 100% local processing and official Google OAuth 2.0 security.
-
----
-
-## ✨ Why You'll Love It
-
-- 🔑 **Automatic 2FA & Delivery PINs**: Instantly pulls verification codes from Amazon, Iceland, DPD, Royal Mail, Steam, Google, and banks.
-- 📋 **One-Tap "Copy Code" Mobile Alert**: Includes a pre-built Blueprint that sends actionable alerts to your phone with a button to copy the code directly to your clipboard.
-- 🚦 **Smart Queue (No Automation Spam)**: If 5 emails arrive at the same time, they are processed one-by-one with a gentle pause so your notifications and automations run smoothly.
-- 🖱️ **Zero YAML Required**: Full support for Home Assistant's visual Automation Builder with native triggers (`New email received`, `New 2FA code received`).
-- 🧪 **One-Click Simulator**: Tap the "Simulate Test Email" button anytime to test your automations and dashboard without waiting for real emails.
-- 🛡️ **Self-Healing Repairs**: If your Google login ever expires, a 1-click prompt appears in your Home Assistant **Repairs** dashboard to reconnect in seconds.
-- 📊 **Beautiful Lovelace Dashboard Card**: Comes with a ready-to-use inbox card showing unread counts, recent emails, and active verification codes.
-- 🔒 **100% Private**: Your credentials and emails stay between your Home Assistant instance and Google. No middleman or third-party servers.
+A Home Assistant custom integration that connects directly to the Gmail REST API via OAuth 2.0. It monitors your inbox, extracts delivery PINs and 2FA verification codes, and sequences incoming messages through a paced queue for Home Assistant automations.
 
 ---
 
-## 📋 Table of Contents
+## Features
 
-1. [Quick Start (3 Easy Steps)](#-quick-start)
-2. [Step 1: Google Cloud Setup](#step-1-google-cloud-setup)
-3. [Step 2: Install the Integration](#step-2-install-the-integration)
-4. [Step 3: Add Integration in Home Assistant](#step-3-add-integration-in-home-assistant)
-5. [🧪 Test Your Setup in 10 Seconds](#-test-your-setup-in-10-seconds)
-6. [📱 Blueprint: Instant 2FA Mobile Notifications](#-blueprint-instant-2fa-mobile-notifications)
-7. [📊 Add the Inbox Dashboard Card](#-add-the-inbox-dashboard-card)
-8. [🤖 Automation Examples](#-automation-examples)
-9. [⚙️ Settings & Customization](#-settings--customization)
-10. [🛠️ Troubleshooting & Token Expiry](#-troubleshooting--token-expiry)
-11. [🤖 Disclaimer](#-disclaimer)
+- **2FA and Delivery Code Extraction**: Automatically extracts one-time passcodes and delivery PINs from couriers and services (Amazon, Iceland, DPD, Royal Mail, Google, Steam, banks).
+- **Paced Ingestion Queue**: Processes incoming emails one at a time with a configurable dwell period to prevent overlapping notifications and automation conflicts.
+- **Native Device Triggers**: Supports Home Assistant's visual Automation Editor with `new_email` and `new_otp` triggers.
+- **Built-in Simulator**: Test automations, blueprints, and dashboards on demand via the `Simulate Test Email` button without waiting for real emails.
+- **Native Repairs Flow**: Automatically detects expired OAuth tokens and provides a 1-click re-authentication prompt in Settings > System > Repairs.
+- **Optional Outbound Email**: Can send outbound emails with attachments via the `gmail_oauth_reader.send_email` action when write permissions are granted.
+- **Privacy First**: Direct communication between Home Assistant and Google's API. No intermediary cloud services or third-party proxies.
 
 ---
 
-## 🚀 Quick Start
+## Prerequisites
 
-Getting started takes about 5 minutes. You only need:
-1. A Google Account.
-2. A free Google Cloud project to get your **Client ID** and **Client Secret**.
-3. Home Assistant (2024.11 or newer recommended).
+- Home Assistant 2024.11 or newer
+- A Google Account
+- A free Google Cloud project to obtain an OAuth Client ID and Secret
 
 ---
 
-### Step 1: Google Cloud Setup
+## Setup Guide
 
-Google requires an OAuth Client ID so Home Assistant can securely talk to your inbox.
+### Step 1: Create Google Cloud Credentials
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and sign in.
-2. Click the project dropdown in the top bar and click **New Project**. Name it Home Assistant Gmail and click **Create**.
-3. Make sure your new project is selected, then go to **APIs & Services** > **Library**.
-4. Search for **Gmail API**, click on it, and click **Enable**.
+Google requires OAuth credentials so Home Assistant can access your inbox.
 
-#### Configure the Consent Screen
-1. Go to **APIs & Services** > **OAuth consent screen**.
-2. Select **External** (for @gmail.com accounts) and click **Create**.
-3. Fill in the basics:
-   - **App name**: Home Assistant Gmail
-   - **User support email**: Select your email address.
-   - **Developer contact information**: Enter your email address.
-   - Click **Save and Continue**.
-4. On the **Scopes** page:
+1. Open the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a new project named `Home Assistant Gmail`.
+3. Select your project and navigate to **APIs & Services** > **Library**.
+4. Search for **Gmail API** and click **Enable**.
+
+#### Configure the OAuth Consent Screen
+1. Navigate to **APIs & Services** > **OAuth consent screen**.
+2. Select **External** (for `@gmail.com` accounts) and click **Create**.
+3. Enter the required information:
+   - **App name**: `Home Assistant Gmail`
+   - **User support email**: Select your email address
+   - **Developer contact information**: Enter your email address
+4. Click **Save and Continue**.
+5. On the **Scopes** page:
    - Click **Add or Remove Scopes**.
-   - In the filter/search box, add: https://www.googleapis.com/auth/gmail.modify
-   - *(Optional)* If you want Home Assistant to be able to send emails, also add: https://www.googleapis.com/auth/gmail.send
+   - Manually enter or search for: `https://www.googleapis.com/auth/gmail.modify`
+   - *(Optional)* If you plan to send emails from Home Assistant, also add: `https://www.googleapis.com/auth/gmail.send`
    - Click **Update**, then click **Save and Continue**.
-5. On the **Test users** page:
-   - Click **Add Users** and enter your personal Gmail address.
+6. On the **Test users** page:
+   - Click **Add Users** and enter your Gmail address.
    - Click **Save and Continue**.
 
-> [!IMPORTANT]
-> Because your Google Cloud project is in "Testing" mode, Google requires your personal email to be added under **Test users**. This ensures you can log in without needing official app verification from Google.
+> [!NOTE]
+> When a Google Cloud project is in "Testing" mode, Google requires personal accounts to be listed under **Test users**.
 
-#### Create Your Credentials
-1. Go to **APIs & Services** > **Credentials**.
+#### Generate OAuth Client ID
+1. Navigate to **APIs & Services** > **Credentials**.
 2. Click **Create Credentials** at the top and select **OAuth client ID**.
 3. Set **Application type** to **Web application**.
-4. Under **Authorized redirect URIs**, click **Add URI** and enter:
+4. Set **Name** to `Home Assistant`.
+5. Under **Authorized redirect URIs**, click **Add URI** and enter:
    ```text
    https://my.home-assistant.io/redirect/oauth
    ```
    *(If you do not use My Home Assistant, enter `http://<YOUR_HA_IP>:8123/auth/external/callback` instead).*
-5. Click **Create**.
-6. A popup will display your **Client ID** and **Client Secret**. Keep this window open or copy them down!
+6. Click **Create**.
+7. Copy the generated **Client ID** and **Client Secret**.
 
 ---
 
 ### Step 2: Install the Integration
 
-Copy the `custom_components/gmail_oauth_reader` folder into your Home Assistant `/config/custom_components/` directory:
+Copy the `custom_components/gmail_oauth_reader` directory into your Home Assistant `/config/custom_components/` folder:
 
 ```text
 /config/
@@ -95,91 +80,87 @@ Copy the `custom_components/gmail_oauth_reader` folder into your Home Assistant 
     └── gmail_oauth_reader/
 ```
 
-Restart Home Assistant after copying the folder.
+Restart Home Assistant after copying the files.
 
 ---
 
-### Step 3: Add Integration in Home Assistant
+### Step 3: Add the Integration in Home Assistant
 
 1. In Home Assistant, go to **Settings** > **Devices & Services**.
-2. Click **Add Integration** in the bottom right.
+2. Click **Add Integration** in the bottom right corner.
 3. Search for **Gmail OAuth Reader** and select it.
-4. When prompted, paste your **Client ID** and **Client Secret** from Google Cloud.
-5. A Google login tab will open:
-   - Choose your Google account.
-   - Click **Continue** if Google shows an "App isn't verified" screen (this is normal for your own private app).
-   - Click **Allow** to grant permission.
-6. Return to Home Assistant — your Gmail account is now linked! 🎉
+4. Paste the **Client ID** and **Client Secret** obtained in Step 1.
+5. Follow the Google authentication prompt in your browser:
+   - Select your Google account.
+   - If prompted with "Google hasn't verified this app", click **Advanced** > **Go to Home Assistant Gmail (unsafe)**.
+   - Click **Allow** to grant access.
+6. The integration will complete setup and display your email address as the configured account.
 
 ---
 
-## 🧪 Test Your Setup in 10 Seconds
+## Testing Your Installation
 
-You don't need to wait for a real email to verify everything is working!
+To confirm the integration is working without waiting for inbound emails:
 
-1. Go to **Settings** > **Devices & Services** > **Gmail OAuth Reader**.
-2. Click on your device (`Gmail (your_email@gmail.com)`).
-3. Under **Diagnostic**, find the **Simulate Test Email** button and click **Press**.
-4. Watch your entities update immediately:
-   - `sensor.gmail_latest_email` shows the simulated email.
-   - `sensor.gmail_latest_otp` displays a simulated 6-digit verification code.
-
----
-
-## 📱 Blueprint: Instant 2FA Mobile Notifications
-
-We include a pre-made Home Assistant automation blueprint that automatically sends incoming verification codes and delivery PINs to your phone with a **Copy Code** button.
-
-### How to use it:
-1. Copy [`blueprints/automation/gmail_otp_actionable.yaml`](blueprints/automation/gmail_otp_actionable.yaml) to your Home Assistant `/config/blueprints/automation/` folder.
-2. In Home Assistant, go to **Settings** > **Automations & Scenes** > **Blueprints**.
-3. Find **Gmail 2FA / OTP Actionable Notification** and click **Create Automation**.
-4. Select your **OTP Sensor** (`sensor.gmail_latest_otp`) and your phone from the dropdown.
-5. Click **Save**.
-
-Now whenever an Amazon delivery password, Iceland delivery PIN, or 2FA code arrives in your email, your phone receives an alert with a button that copies the code directly to your clipboard!
+1. Navigate to **Settings** > **Devices & Services** > **Gmail OAuth Reader**.
+2. Select your device (`Gmail (your_email@gmail.com)`).
+3. Under the **Diagnostic** section, locate the **Simulate Test Email** button and click **Press**.
+4. Verify that:
+   - `sensor.gmail_latest_email` updates with a simulated message ID and attributes.
+   - `sensor.gmail_latest_otp` displays a generated 6-digit verification code.
 
 ---
 
-## 📊 Add the Inbox Dashboard Card
+## Actionable Notification Blueprint
 
-A complete, responsive Lovelace card is included in [`lovelace/gmail_inbox_card.yaml`](lovelace/gmail_inbox_card.yaml).
+An automation blueprint is included at [`blueprints/automation/gmail_otp_actionable.yaml`](blueprints/automation/gmail_otp_actionable.yaml). It sends an actionable push notification to your mobile device whenever a 2FA code or delivery PIN arrives, with a button to copy the code directly to your clipboard.
 
-### How to add it:
-1. Open any Home Assistant dashboard.
-2. Click the three dots in the top-right corner and select **Edit Dashboard**.
-3. Click **Add Card** (at the bottom) and choose **Manual** (at the very bottom).
-4. Copy and paste the contents of [`lovelace/gmail_inbox_card.yaml`](lovelace/gmail_inbox_card.yaml) into the box.
-5. Click **Save**.
+### Usage
 
-### What you get:
-- 📬 **Live Unread Count** badge and queue depth status.
-- ⚡ **1-Tap "Poll Now" button** to check for new mail on demand.
-- 🔑 **Prominent 2FA / OTP Banner** that lights up with monospace code and a "Mark as Read" button whenever a code arrives.
-- 📜 **Recent Emails Feed** showing the sender, subject, and preview of your latest emails.
+1. Copy `blueprints/automation/gmail_otp_actionable.yaml` into your `/config/blueprints/automation/` directory.
+2. In Home Assistant, navigate to **Settings** > **Automations & Scenes** > **Blueprints**.
+3. Select **Gmail 2FA / OTP Actionable Notification** and click **Create Automation**.
+4. Choose your **OTP Sensor** (`sensor.gmail_latest_otp`) and target notify service.
+5. Save the automation.
 
 ---
 
-## 🤖 Automation Examples
+## Lovelace Dashboard Card
 
-### 1. Visual Automation Builder (No YAML)
-You can build automations using Home Assistant's friendly point-and-click editor:
+A pre-configured dashboard card is available at [`lovelace/gmail_inbox_card.yaml`](lovelace/gmail_inbox_card.yaml).
+
+### Setup
+
+1. Open your dashboard, click the menu in the top right, and select **Edit Dashboard**.
+2. Click **Add Card** and choose **Manual** at the bottom of the card list.
+3. Paste the contents of [`lovelace/gmail_inbox_card.yaml`](lovelace/gmail_inbox_card.yaml) into the editor.
+4. Click **Save**.
+
+The card displays:
+- Unread count badge and queue status.
+- A **Poll Now** button for immediate inbox synchronization.
+- A dynamic 2FA banner that appears when a verification code is active.
+- A list of recent emails with sender, timestamp, and body preview.
+
+---
+
+## Automation Examples
+
+### Visual Automation Builder (UI Mode)
+
+You can configure automations without YAML using Home Assistant's visual editor:
 
 1. Go to **Settings** > **Automations & Scenes** > **Create Automation**.
-2. Under **When**, choose **Device**.
-3. Select your **Gmail** device.
-4. Choose your trigger:
-   - **New email received**
-   - **New 2FA / OTP verification code received**
-5. Add your actions (e.g., turn on a light, play a chime, send a notification).
+2. Set the trigger to **Device** and select your **Gmail** device.
+3. Choose either trigger:
+   - `New email received`
+   - `New 2FA / OTP verification code received`
+4. Add desired actions (such as sending a notification or flashing a light).
 
----
-
-### 2. Simple Incoming Email Notification (YAML)
-Send a notification to your phone whenever an email arrives:
+### State Trigger Notification (YAML)
 
 ```yaml
-alias: "Gmail: New Email Alert"
+alias: "Gmail: Inbound Email Alert"
 trigger:
   - platform: state
     entity_id: sensor.gmail_latest_email
@@ -194,13 +175,12 @@ action:
       message: "{{ state_attr('sensor.gmail_latest_email', 'subject') }}"
 ```
 
----
+### Send Email with Attachment (YAML)
 
-### 3. Send Camera Snapshot via Email (YAML)
-If you enabled Write Access during setup, Home Assistant can send outbound emails with attachments:
+Requires write access enabled during initial setup or in the integration options.
 
 ```yaml
-alias: "Security: Email Driveway Snapshot"
+alias: "Security: Send Camera Snapshot"
 trigger:
   - platform: state
     entity_id: binary_sensor.driveway_motion
@@ -213,50 +193,48 @@ action:
       filename: "/config/www/driveway_snapshot.jpg"
   - action: gmail_oauth_reader.send_email
     data:
-      to: "my_email@gmail.com"
-      subject: "Motion Detected at Driveway"
-      body: "Motion was detected. Snapshot is attached."
+      to: "recipient@example.com"
+      subject: "Driveway Motion Alert"
+      body: "Motion was detected. Snapshot attached."
       attachments:
         - "/config/www/driveway_snapshot.jpg"
 ```
 
 ---
 
-## ⚙️ Settings & Customization
+## Configuration Options
 
-You can fine-tune how the integration behaves anytime without restarting:
-1. Go to **Settings** > **Devices & Services** > **Gmail OAuth Reader**.
-2. Click **Configure**.
+To adjust options after installation, go to **Settings** > **Devices & Services** > **Gmail OAuth Reader** and click **Configure**.
 
-| Setting | Default | What it does |
+| Option | Default | Description |
 | :--- | :--- | :--- |
-| **Polling interval** | `60 seconds` | How often Home Assistant checks your inbox (between 30 and 600 seconds). |
-| **Queue dwell time** | `5 seconds` | Time spent highlighting each email before moving to the next. Gives automations time to react. |
-| **Search query filter** | `is:unread label:INBOX` | Standard Gmail search query. Customize it to filter your mail (e.g. `is:unread -category:promotions`). |
-| **Extract 2FA / OTP codes** | `Enabled` | Automatically detects verification codes and delivery PINs. |
-| **OTP code expiration** | `15 minutes` | How long the 2FA code stays active in the sensor before resetting to `'idle'`. |
-| **Enable Write Access** | `Disabled` | Allows Home Assistant to send outbound emails via the `gmail_oauth_reader.send_email` action. |
+| **Polling interval** | `60` | Frequency in seconds between inbox queries (range: 30 to 600). |
+| **Queue dwell time** | `5` | Seconds each email remains active in the sensor before advancing to the next queued message. |
+| **Search query filter** | `is:unread label:INBOX` | Gmail query syntax used to filter retrieved messages. |
+| **Extract 2FA / OTP codes** | `true` | Scans inbound emails for verification codes and delivery PINs. |
+| **OTP code expiration** | `15` | Minutes a detected code remains in `sensor.gmail_latest_otp` before clearing to `'idle'`. |
+| **Enable Write Access** | `false` | Grants `gmail.send` scope for the `send_email` action. Triggers an OAuth re-authentication when enabled. |
 
 ---
 
-## 🛠️ Troubleshooting & Token Expiry
+## Troubleshooting
 
-### 1-Click Native Repairs
-If your Google authorization ever lapses, Home Assistant's native **Repairs** dashboard (**Settings** > **System** > **Repairs**) will alert you:
-- Simply click **Submit** on the repair card to launch the Google re-authentication popup.
-- Once completed, polling resumes automatically and the repair alert disappears!
+### Token Expiration and Repairs
 
-### Understanding the 7-Day Google Token Expiry
-Google Cloud projects that have an OAuth consent screen in **Testing** status automatically expire OAuth refresh tokens after **7 days** unless:
-1. Your Google Cloud project is published to **Production** status (takes 1 minute in the OAuth consent screen tab, no review needed for personal use).
-2. Or you simply click the 1-click Repair flow when notified.
+Google Cloud projects in **Testing** status expire OAuth refresh tokens after 7 days. If a token expires:
 
-### Download Diagnostics
-If you ever run into an issue, go to **Settings** > **Devices & Services** > **Gmail OAuth Reader** > **three dots** > **Download diagnostics**. All personal emails, tokens, and verification codes are automatically redacted so you can safely share the log on GitHub.
+1. Home Assistant will create an issue under **Settings** > **System** > **Repairs**.
+2. Click **Submit** on the repair prompt to complete a one-click OAuth re-authentication.
+3. Once authenticated, the repair issue resolves automatically and polling resumes.
+
+To prevent 7-day expirations, set the OAuth consent screen publishing status to **In production** in the Google Cloud Console (verification is not required for private personal use).
+
+### Diagnostics
+
+To export debug data with sensitive information redacted, navigate to **Settings** > **Devices & Services** > **Gmail OAuth Reader**, click the three dots menu, and select **Download diagnostics**.
 
 ---
 
-## 🤖 Disclaimer
+## Disclaimer
 
-This project was built with AI assistance and thoroughly tested, verified, and reviewed by a human.
-
+This project was built with AI assistance and reviewed by a human.
