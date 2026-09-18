@@ -141,6 +141,3 @@ async def test_unread_count_queue_size_and_last_polled(
 
     assert unread_sensor.native_value == 7
     assert polled_sensor.native_value == datetime(2026, 9, 18, 12, 0, tzinfo=timezone.utc)
-    polled_attrs = polled_sensor.extra_state_attributes
-    assert polled_attrs['update_mode'] == 'polling'
-    assert polled_attrs['watch_active'] is False

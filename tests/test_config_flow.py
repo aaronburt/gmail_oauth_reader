@@ -7,8 +7,6 @@ from custom_components.gmail_oauth_reader.config_flow import GmailOAuthFlowHandl
 from custom_components.gmail_oauth_reader.const import (
     CONF_ENABLE_WRITE,
     CONF_POLL_INTERVAL,
-    CONF_UPDATE_MODE,
-    MODE_POLLING,
     SCOPE_GMAIL_SEND,
 )
 
@@ -47,7 +45,6 @@ async def test_options_flow_init_and_update(
     result2 = await hass.config_entries.options.async_configure(
         result['flow_id'],
         user_input={
-            CONF_UPDATE_MODE: MODE_POLLING,
             CONF_POLL_INTERVAL: 120,
             CONF_ENABLE_WRITE: False,
         },
@@ -67,7 +64,6 @@ async def test_options_flow_enable_write_reauth(
     await hass.config_entries.options.async_configure(
         result['flow_id'],
         user_input={
-            CONF_UPDATE_MODE: MODE_POLLING,
             CONF_POLL_INTERVAL: 60,
             CONF_ENABLE_WRITE: True,
         },

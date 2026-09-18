@@ -28,21 +28,14 @@ from .const import (
     CONF_EXTRACT_OTP,
     CONF_OTP_EXPIRY_MINUTES,
     CONF_POLL_INTERVAL,
-    CONF_PUBSUB_PROJECT_ID,
-    CONF_PUBSUB_SUBSCRIPTION,
-    CONF_PUBSUB_TOPIC,
     CONF_QUERY,
     CONF_QUEUE_DWELL_TIME,
-    CONF_SAFETY_POLL_INTERVAL,
-    CONF_UPDATE_MODE,
     DEFAULT_ENABLE_WRITE,
     DEFAULT_EXTRACT_OTP,
     DEFAULT_OTP_EXPIRY_MINUTES,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_QUERY,
     DEFAULT_QUEUE_DWELL_TIME,
-    DEFAULT_SAFETY_POLL_INTERVAL,
-    DEFAULT_UPDATE_MODE,
     DOMAIN,
     EVENT_GMAIL_NEW_EMAIL,
     EVENT_GMAIL_NEW_OTP,
@@ -51,17 +44,9 @@ from .const import (
     MAX_BODY_PREVIEW_LENGTH,
     MAX_RECENT_EMAILS,
     MAX_SEEN_CACHE_SIZE,
-    MODE_PUBSUB_PULL,
-    MODE_PUBSUB_PUSH,
     SIMULATED_MESSAGE_PREFIX,
 )
 from .otp import extract_otp_code
-from .pubsub import (
-    GmailWatchManager,
-    PubSubPullListener,
-    format_subscription_path,
-    format_topic_path,
-)
 from .repairs import async_create_issue, async_delete_issue
 
 _LOGGER = logging.getLogger(__name__)
@@ -221,14 +206,7 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         self._latest_otp: GmailMessage | None = None
         self._otp_received_at: datetime | None = None
         self._otp_expiry_timer: asyncio.Task[None] | None = None
-        self._watch_manager: GmailWatchManager = GmailWatchManager(hass, session)
-        self._pull_listener: PubSubPullListener = PubSubPullListener(hass, session)
-        self._debounce_task: asyncio.Task[None] | None = None
         self._simulated_messages: OrderedDict[str, dict[str, Any]] = OrderedDict()
-
-    @property
-    def update_mode(self) -> str:
-        return self._entry.options.get(CONF_UPDATE_MODE, DEFAULT_UPDATE_MODE)
 
     @property
     def is_write_enabled(self) -> bool:
@@ -238,14 +216,6 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
                 self._entry.data.get(CONF_ENABLE_WRITE, DEFAULT_ENABLE_WRITE),
             )
         )
-
-    @property
-    def watch_active(self) -> bool:
-        return self._watch_manager.watch_active
-
-    @property
-    def watch_expiration(self) -> datetime | None:
-        return self._watch_manager.watch_expiration
 
     @property
     def last_polled(self) -> datetime | None:
@@ -299,63 +269,6 @@ class GmailDataUpdateCoordinator(DataUpdateCoordinator[GmailMessage | None]):
         if self._otp_expiry_timer is not None and not self._otp_expiry_timer.done():
             self._otp_expiry_timer.cancel()
             self._otp_expiry_timer = None
-        if self._debounce_task is not None and not self._debounce_task.done():
-            self._debounce_task.cancel()
-            self._debounce_task = None
-
-    async def async_apply_update_mode(self) -> None:
-        mode = self.update_mode
-        project_id = self._entry.options.get(CONF_PUBSUB_PROJECT_ID, "")
-        topic_name = self._entry.options.get(CONF_PUBSUB_TOPIC, "")
-        sub_name = self._entry.options.get(CONF_PUBSUB_SUBSCRIPTION, "")
-        safety_interval = self._entry.options.get(
-            CONF_SAFETY_POLL_INTERVAL, DEFAULT_SAFETY_POLL_INTERVAL
-        )
-        poll_interval = self._entry.options.get(
-            CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL
-        )
-
-        if mode == MODE_PUBSUB_PULL:
-            self.update_interval = timedelta(seconds=safety_interval)
-            if project_id and topic_name:
-                topic_path = format_topic_path(project_id, topic_name)
-                await self._watch_manager.async_start_watch(topic_path)
-            if project_id and sub_name:
-                sub_path = format_subscription_path(project_id, sub_name)
-                self._pull_listener.start(
-                    sub_path, self.async_handle_pubsub_notification
-                )
-        elif mode == MODE_PUBSUB_PUSH:
-            self._pull_listener.stop()
-            self.update_interval = timedelta(seconds=safety_interval)
-            if project_id and topic_name:
-                topic_path = format_topic_path(project_id, topic_name)
-                await self._watch_manager.async_start_watch(topic_path)
-        else:
-            self._pull_listener.stop()
-            await self._watch_manager.async_stop_watch()
-            self.update_interval = timedelta(seconds=poll_interval)
-
-    async def async_stop_realtime(self) -> None:
-        self._pull_listener.stop()
-        await self._watch_manager.async_stop_watch()
-        if self._debounce_task is not None and not self._debounce_task.done():
-            self._debounce_task.cancel()
-            self._debounce_task = None
-
-    async def async_handle_pubsub_notification(self) -> None:
-        if self._debounce_task is not None and not self._debounce_task.done():
-            self._debounce_task.cancel()
-        self._debounce_task = self.hass.async_create_background_task(
-            self._async_debounced_refresh(), "gmail_pubsub_debounced_refresh"
-        )
-
-    async def _async_debounced_refresh(self) -> None:
-        try:
-            await asyncio.sleep(1.5)
-            await self.async_request_refresh()
-        except asyncio.CancelledError:
-            pass
 
     def _record_seen(self, message_id: str) -> None:
         self._seen_message_ids[message_id] = None
