@@ -1,0 +1,36 @@
+name: Bug report
+description: Create a report to help us improve
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report an issue. For security issues, please refer to [SECURITY.md](../SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Integration Version
+      description: What version of gmail_oauth_reader are you running?
+      placeholder: e.g. 1.7.0
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant Version
+      description: What version of Home Assistant Core are you running?
+      placeholder: e.g. 2024.11.2
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe what happened and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Log Output
+      description: Please copy and paste any relevant logs. Ensure personal tokens and sensitive details are removed.
+      render: shell

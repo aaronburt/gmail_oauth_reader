@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an idea or feature for gmail_oauth_reader
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: Suggest an enhancement or new feature.
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Problem or Use Case
+      description: Is your feature request related to a problem or specific use case?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see implemented.
+    validations:
+      required: true
