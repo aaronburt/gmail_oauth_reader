@@ -12,7 +12,7 @@ from custom_components.gmail_oauth_reader.coordinator import GmailDataUpdateCoor
 async def test_burst_queue_and_otp_priority(hass: HomeAssistant) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,
-        unique_id='email@aaronburt.co.uk',
+        unique_id='user@example.com',
         data={'auth_implementation': 'google'},
         options={'dwell_time': 2, 'scan_interval': 300},
     )

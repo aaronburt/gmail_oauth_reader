@@ -8,7 +8,7 @@ from custom_components.gmail_oauth_reader.coordinator import (
     sanitize_text,
 )
 
-CORPUS_DIR = Path(r"C:\Users\Aaron\Desktop\Delivery\emails")
+CORPUS_DIR = Path.home() / "Desktop" / "Delivery" / "emails"
 
 
 def test_full_corpus_parsing_and_otp_extraction():

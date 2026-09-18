@@ -157,7 +157,9 @@ async def test_real_delivery_emails_parsing_and_simulation(
     import re
     from custom_components.gmail_oauth_reader.coordinator import sanitize_text, extract_service_name
 
-    real_dir = Path(r"C:\Users\Aaron\Desktop\Delivery\emails")
+    real_dir = Path.home() / "Desktop" / "Delivery" / "emails"
+    if not real_dir.exists():
+        pytest.skip("Delivery emails directory not found")
     test_cases = [
         ("1a0a9da6b2839561_iceland_out_for_delivery.html", "Iceland", "orders@iceland.co.uk"),
         ("1a0a992c473cb620_evri_delivered.html", "Evri", "tracking@evri.com"),
@@ -210,12 +212,17 @@ async def test_real_delivery_email_otp_extraction(
         update_interval=timedelta(seconds=60),
     )
 
-    from pathlib import Path
     import re
+    from pathlib import Path
     from custom_components.gmail_oauth_reader.coordinator import sanitize_text
+    real_dir = Path.home() / "Desktop" / "Delivery" / "emails"
+    if not real_dir.exists():
+        pytest.skip("Delivery emails directory not found")
 
-    iceland_path = Path(r"C:\Users\Aaron\Desktop\Delivery\emails\19770596776c5d52_iceland_general_update.html")
-    assert iceland_path.exists()
+    iceland_files = list(real_dir.glob("*iceland*.html"))
+    if not iceland_files:
+        pytest.skip("No Iceland delivery email fixtures found")
+    iceland_path = iceland_files[0]
     raw_html = iceland_path.read_text(encoding="utf-8", errors="ignore")
     clean_text = re.sub(r"<[^>]+>", " ", raw_html)
     preview = sanitize_text(clean_text, 200)

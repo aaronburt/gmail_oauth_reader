@@ -15,7 +15,7 @@ from custom_components.gmail_oauth_reader.coordinator import (
     sanitize_text,
 )
 
-REAL_EMAILS_DIR = Path('C:/Users/Aaron/Desktop/Delivery/emails')
+REAL_EMAILS_DIR = Path.home() / "Desktop" / "Delivery" / "emails"
 
 
 def test_helper_decode_mime_header() -> None:
